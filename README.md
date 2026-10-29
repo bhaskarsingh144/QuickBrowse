@@ -15,11 +15,7 @@ Works alongside [JumpDock](https://github.com/bhaskarsingh144/JumpDock) (top) an
 
 ## Screenshots
 
-> Drop your images into [`assets/`](assets/) and they will show up here.
-
-| Left rail | Folder view | Pins / Recent |
-| :---: | :---: | :---: |
-| ![Left rail](assets/screenshot-rail.png) | ![Folder view](assets/screenshot-pane.png) | ![Pins](assets/screenshot-pins.png) |
+![QuickBrowse rail and This PC](assets/screenshot-overview.png)
 
 ---
 
