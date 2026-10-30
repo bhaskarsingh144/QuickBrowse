@@ -66,6 +66,55 @@ internal static class ShellFileOps
         }
     }
 
+    public static bool OpenDefault(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return false;
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Shows the Windows Open with dialog (verb openas).</summary>
+    public static bool OpenWith(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            return false;
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                Verb = "openas",
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "rundll32.exe",
+                    Arguments = "shell32.dll,OpenAs_RunDLL " + path,
+                    UseShellExecute = false
+                });
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
     /// <summary>Rename file/folder. Returns new full path, or null and sets error.</summary>
     public static string Rename(string path, string newName, out string error)
     {

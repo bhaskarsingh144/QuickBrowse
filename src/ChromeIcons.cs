@@ -18,6 +18,13 @@ internal static class ChromeIcons
     public static readonly Color NewFolderInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
     public static readonly Color RefreshInk = Color.FromArgb(255, 0x9B, 0xD4, 0xFF);
     public static readonly Color ClipboardInk = Color.FromArgb(255, 0xC5, 0xCB, 0xD6);
+    public static readonly Color CutInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
+    public static readonly Color PasteInk = Color.FromArgb(255, 0xA8, 0xD5, 0xA2);
+    public static readonly Color RenameInk = Color.FromArgb(255, 0x9B, 0xD4, 0xFF);
+    public static readonly Color SendToInk = Color.FromArgb(255, 0xC5, 0xCB, 0xD6);
+    public static readonly Color OpenWithInk = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
+    public static readonly Color CompressInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
+    public static readonly Color ExtractInk = Color.FromArgb(255, 0xA8, 0xD5, 0xA2);
 
     public static Bitmap Make(int size, Action<Graphics, int> draw)
     {
@@ -266,6 +273,138 @@ internal static class ChromeIcons
                 g.FillRectangle(fill, board);
                 g.DrawRectangle(pen, board.X, board.Y, board.Width, board.Height);
                 g.DrawRectangle(pen, 6f * u, 2.5f * u, 4f * u, 2.2f * u);
+            }
+        });
+    }
+
+    public static Bitmap Cut(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(CutInk, Math.Max(1.4f, 1.45f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawEllipse(pen, 2.8f * u, 2.8f * u, 4.2f * u, 4.2f * u);
+                g.DrawEllipse(pen, 9f * u, 2.8f * u, 4.2f * u, 4.2f * u);
+                g.DrawLine(pen, 5f * u, 7f * u, 8f * u, 13f * u);
+                g.DrawLine(pen, 11f * u, 7f * u, 8f * u, 13f * u);
+            }
+        });
+    }
+
+    public static Bitmap Paste(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(PasteInk, Math.Max(1.3f, 1.35f * u)))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(50, PasteInk)))
+            {
+                RectangleF board = new RectangleF(4f * u, 4f * u, 8f * u, 9.5f * u);
+                g.FillRectangle(fill, board);
+                g.DrawRectangle(pen, board.X, board.Y, board.Width, board.Height);
+                g.DrawRectangle(pen, 5.5f * u, 2.5f * u, 5f * u, 2.4f * u);
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawLine(pen, 6.2f * u, 8f * u, 9.8f * u, 8f * u);
+                g.DrawLine(pen, 6.2f * u, 10.2f * u, 9.8f * u, 10.2f * u);
+            }
+        });
+    }
+
+    public static Bitmap Rename(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(RenameInk, Math.Max(1.35f, 1.4f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawLine(pen, 3.5f * u, 12.5f * u, 9.5f * u, 3.5f * u);
+                g.DrawLine(pen, 9.5f * u, 3.5f * u, 12.2f * u, 5.2f * u);
+                g.DrawLine(pen, 3.5f * u, 12.5f * u, 6.2f * u, 12.5f * u);
+            }
+        });
+    }
+
+    public static Bitmap SendTo(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(SendToInk, Math.Max(1.4f, 1.45f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                g.DrawLines(pen, new PointF[]
+                {
+                    new PointF(3f * u, 8f * u),
+                    new PointF(10f * u, 8f * u),
+                    new PointF(7.5f * u, 5f * u)
+                });
+                g.DrawLine(pen, 10f * u, 8f * u, 7.5f * u, 11f * u);
+                g.DrawLine(pen, 12.5f * u, 4f * u, 12.5f * u, 12f * u);
+            }
+        });
+    }
+
+    public static Bitmap OpenWith(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(OpenWithInk, Math.Max(1.35f, 1.4f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawRectangle(pen, 3f * u, 3.5f * u, 7f * u, 9f * u);
+                g.DrawLine(pen, 8.5f * u, 7.5f * u, 13f * u, 4f * u);
+                g.DrawLine(pen, 10.5f * u, 4.2f * u, 13f * u, 4f * u);
+                g.DrawLine(pen, 13f * u, 4f * u, 12.5f * u, 6.5f * u);
+            }
+        });
+    }
+
+    public static Bitmap Compress(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(CompressInk, Math.Max(1.3f, 1.35f * u)))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(55, CompressInk)))
+            {
+                RectangleF body = new RectangleF(4f * u, 3f * u, 8f * u, 10.5f * u);
+                g.FillRectangle(fill, body);
+                g.DrawRectangle(pen, body.X, body.Y, body.Width, body.Height);
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                for (float y = 5.5f; y <= 11f; y += 1.8f)
+                    g.DrawLine(pen, 5.5f * u, y * u, 10.5f * u, y * u);
+            }
+        });
+    }
+
+    public static Bitmap Extract(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(ExtractInk, Math.Max(1.35f, 1.4f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawRectangle(pen, 3.5f * u, 3f * u, 6f * u, 8f * u);
+                g.DrawLines(pen, new PointF[]
+                {
+                    new PointF(10f * u, 6f * u),
+                    new PointF(13f * u, 9f * u),
+                    new PointF(10f * u, 12f * u)
+                });
+                g.DrawLine(pen, 13f * u, 9f * u, 7.5f * u, 9f * u);
             }
         });
     }

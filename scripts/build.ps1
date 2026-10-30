@@ -33,6 +33,8 @@ $refs = @(
     "$fw\System.Windows.Forms.dll",
     "$fw\System.Drawing.dll",
     "$fw\System.Management.dll",
+    "$fw\System.IO.Compression.dll",
+    "$fw\System.IO.Compression.FileSystem.dll",
     "System.dll",
     "System.Core.dll"
 )

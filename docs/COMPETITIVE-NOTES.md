@@ -18,9 +18,9 @@ Not a teardown of every Explorer feature. Focus: where a **left-edge companion**
 - Search indexed query UI
 - Default file manager replacement / set-as-default politics
 
-**Shipped:** managed item + background context menus (Open, Pin, Cut/Copy/Paste, Rename, Delete→Recycle, Properties). See [`TEST-CONTEXT.md`](TEST-CONTEXT.md).
+**Shipped:** managed rounded Win11-like menus with icon row; Open / Open with; Send to (Desktop/Documents/Downloads); Compress/Extract ZIP; Cut/Copy/Paste/Rename/Delete→Recycle; Properties; header Cut/Copy/Paste/Delete chips. See [`TEST-CONTEXT.md`](TEST-CONTEXT.md).
 
-**Escape hatch:** “Open in Explorer” keeps power users unblocked.
+**Escape hatch:** “Show in Explorer” / “Open in Explorer” for full shell verbs.
 
 ## What “better” can mean for QuickBrowse v0
 
