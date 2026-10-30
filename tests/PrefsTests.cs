@@ -19,6 +19,7 @@ internal static class PrefsTests
             RoundTripAllModes();
             LegacyStrings();
             UnknownDefaultsToTiles();
+            ShowHiddenRoundTrip();
         }
         finally
         {
@@ -69,6 +70,15 @@ internal static class PrefsTests
     {
         File.WriteAllText(_viewPath, "nope");
         Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "unknown → Tiles");
+    }
+
+    private static void ShowHiddenRoundTrip()
+    {
+        Expect(!Prefs.LoadShowHidden(), "hidden default off");
+        Prefs.SaveShowHidden(true);
+        Expect(Prefs.LoadShowHidden(), "hidden on");
+        Prefs.SaveShowHidden(false);
+        Expect(!Prefs.LoadShowHidden(), "hidden off");
     }
 
     private static void Expect(bool ok, string label)

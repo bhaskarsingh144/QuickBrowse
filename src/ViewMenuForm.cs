@@ -4,7 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 /// <summary>
-/// Anchored view-mode picker — Tiles / Content / Details — matching pane chrome.
+/// Anchored view-mode picker — Tiles / Content / Details + Show hidden — matching pane chrome.
 /// </summary>
 internal sealed class ViewMenuForm : Form
 {
@@ -17,19 +17,24 @@ internal sealed class ViewMenuForm : Form
 
     private readonly BrowseViewMode _current;
     private readonly Image[] _icons = new Image[3];
-    private readonly Rectangle[] _hits = new Rectangle[3];
+    private readonly Rectangle[] _modeHits = new Rectangle[3];
+    private Rectangle _hiddenHit;
+    private Rectangle _sepRect;
+    private bool _showHidden;
     private Font _labelFont;
     private float _dpi = 96f;
     private float _fit = 1f;
-    private int _hot = -1;
+    private int _hot = -1; // 0..2 modes, 3 = hidden
     private int _suspendClose;
     private bool _chosen;
 
     public event Action<BrowseViewMode> ModeChosen;
+    public event Action<bool> ShowHiddenChanged;
 
-    public ViewMenuForm(BrowseViewMode current, float dpi, float fit)
+    public ViewMenuForm(BrowseViewMode current, bool showHidden, float dpi, float fit)
     {
         _current = current;
+        _showHidden = showHidden;
         _dpi = dpi < 96f ? 96f : dpi;
         _fit = fit <= 0f ? 1f : fit;
 
@@ -127,15 +132,19 @@ internal sealed class ViewMenuForm : Form
     {
         int pad = Px(8);
         int row = Math.Max(Px(34), Px(ChromeLayout.PinsFlyoutRowDip));
+        int sep = Px(9);
         int width = Px(ChromeLayout.ViewMenuWidthDip);
         Width = width;
-        Height = pad * 2 + row * Modes.Length;
+        Height = pad * 2 + row * Modes.Length + sep + row;
         int y = pad;
         for (int i = 0; i < Modes.Length; i++)
         {
-            _hits[i] = new Rectangle(pad, y, width - pad * 2, row);
+            _modeHits[i] = new Rectangle(pad, y, width - pad * 2, row);
             y += row;
         }
+        _sepRect = new Rectangle(pad + Px(4), y + sep / 2, width - pad * 2 - Px(8), 1);
+        y += sep;
+        _hiddenHit = new Rectangle(pad, y, width - pad * 2, row);
         if (IsHandleCreated)
             ChromeVisual.ApplyRoundedRegion(this, Px(ChromeVisual.CornerDip - 2));
     }
@@ -199,20 +208,27 @@ internal sealed class ViewMenuForm : Form
         int idx = HitIndex(e.Location);
         if (idx < 0)
             return;
-        Choose(Modes[idx]);
+        if (idx == 3)
+        {
+            ToggleHidden();
+            return;
+        }
+        ChooseMode(Modes[idx]);
     }
 
     private int HitIndex(Point pt)
     {
-        for (int i = 0; i < _hits.Length; i++)
+        for (int i = 0; i < _modeHits.Length; i++)
         {
-            if (_hits[i].Contains(pt))
+            if (_modeHits[i].Contains(pt))
                 return i;
         }
+        if (_hiddenHit.Contains(pt))
+            return 3;
         return -1;
     }
 
-    private void Choose(BrowseViewMode mode)
+    private void ChooseMode(BrowseViewMode mode)
     {
         _chosen = true;
         _suspendClose++;
@@ -227,6 +243,15 @@ internal sealed class ViewMenuForm : Form
             _suspendClose--;
             Close();
         }
+    }
+
+    private void ToggleHidden()
+    {
+        _showHidden = !_showHidden;
+        Action<bool> handler = ShowHiddenChanged;
+        if (handler != null)
+            handler(_showHidden);
+        Invalidate();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -244,7 +269,7 @@ internal sealed class ViewMenuForm : Form
         int gap = Px(10);
         for (int i = 0; i < Modes.Length; i++)
         {
-            Rectangle hit = _hits[i];
+            Rectangle hit = _modeHits[i];
             bool selected = Modes[i] == _current;
             bool hot = i == _hot;
             if (selected)
@@ -272,21 +297,44 @@ internal sealed class ViewMenuForm : Form
                 TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
             if (selected)
+                DrawCheck(g, hit);
+        }
+
+        using (SolidBrush sep = new SolidBrush(UiTheme.Border))
+            g.FillRectangle(sep, _sepRect);
+
+        bool hiddenHot = _hot == 3;
+        if (_showHidden)
+            ChromeVisual.FillRound(g, _hiddenHit, chipR, Color.FromArgb(255, 0x2F, 0x3A, 0x48));
+        else if (hiddenHot)
+            ChromeVisual.FillRound(g, _hiddenHit, chipR, UiTheme.Hover);
+
+        Color hiddenInk = _showHidden ? UiTheme.Accent : UiTheme.Text;
+        TextRenderer.DrawText(
+            g,
+            "Show hidden items",
+            _labelFont,
+            new Rectangle(_hiddenHit.X + iconPad, _hiddenHit.Y, Math.Max(8, _hiddenHit.Width - iconPad - Px(28)), _hiddenHit.Height),
+            hiddenInk,
+            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        if (_showHidden)
+            DrawCheck(g, _hiddenHit);
+    }
+
+    private void DrawCheck(Graphics g, Rectangle hit)
+    {
+        using (Pen pen = new Pen(UiTheme.Accent, 1.4f))
+        {
+            pen.StartCap = LineCap.Round;
+            pen.EndCap = LineCap.Round;
+            int cx = hit.Right - Px(18);
+            int cy = hit.Y + hit.Height / 2;
+            g.DrawLines(pen, new Point[]
             {
-                using (Pen pen = new Pen(UiTheme.Accent, 1.4f))
-                {
-                    pen.StartCap = LineCap.Round;
-                    pen.EndCap = LineCap.Round;
-                    int cx = hit.Right - Px(18);
-                    int cy = hit.Y + hit.Height / 2;
-                    g.DrawLines(pen, new Point[]
-                    {
-                        new Point(cx - Px(5), cy),
-                        new Point(cx - Px(1), cy + Px(4)),
-                        new Point(cx + Px(6), cy - Px(5))
-                    });
-                }
-            }
+                new Point(cx - Px(5), cy),
+                new Point(cx - Px(1), cy + Px(4)),
+                new Point(cx + Px(6), cy - Px(5))
+            });
         }
     }
 }

@@ -75,6 +75,11 @@ internal static class DirectoryModel
 
     public static DirectoryListing ListPath(string path)
     {
+        return ListPath(path, false);
+    }
+
+    public static DirectoryListing ListPath(string path, bool showHidden)
+    {
         DirectoryListing result = new DirectoryListing();
         result.Path = path;
         result.Entries = new List<DirEntry>();
@@ -93,7 +98,7 @@ internal static class DirectoryModel
             DirectoryInfo root = new DirectoryInfo(path);
             foreach (DirectoryInfo dir in root.GetDirectories())
             {
-                if (IsHiddenOrSystem(dir.Attributes))
+                if (ShouldSkip(dir.Attributes, showHidden))
                     continue;
                 result.Entries.Add(new DirEntry
                 {
@@ -108,7 +113,7 @@ internal static class DirectoryModel
             }
             foreach (FileInfo file in root.GetFiles())
             {
-                if (IsHiddenOrSystem(file.Attributes))
+                if (ShouldSkip(file.Attributes, showHidden))
                     continue;
                 result.Entries.Add(new DirEntry
                 {
@@ -242,8 +247,16 @@ internal static class DirectoryModel
         return ext.TrimStart('.').ToUpperInvariant() + " File";
     }
 
-    private static bool IsHiddenOrSystem(FileAttributes attrs)
+    /// <summary>
+    /// Always skip System (and Hidden+System protected files).
+    /// When <paramref name="showHidden"/> is false, also skip Hidden-only items.
+    /// </summary>
+    internal static bool ShouldSkip(FileAttributes attrs, bool showHidden)
     {
-        return (attrs & (FileAttributes.Hidden | FileAttributes.System)) != 0;
+        if ((attrs & FileAttributes.System) != 0)
+            return true;
+        if ((attrs & FileAttributes.Hidden) != 0 && !showHidden)
+            return true;
+        return false;
     }
 }

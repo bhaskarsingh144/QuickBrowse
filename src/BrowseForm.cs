@@ -55,6 +55,7 @@ internal sealed class BrowseForm : Form
     private Font _tileFont;
     private Font _metaFont;
     private BrowseViewMode _viewMode = BrowseViewMode.Tiles;
+    private bool _showHidden;
     private bool _suppressPathEnter;
     private bool _pathEditing;
     private int _sortColumn;
@@ -77,6 +78,7 @@ internal sealed class BrowseForm : Form
     {
         _session = session;
         _viewMode = Prefs.LoadViewMode();
+        _showHidden = Prefs.LoadShowHidden();
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
@@ -795,9 +797,17 @@ internal sealed class BrowseForm : Form
         }
         CloseViewMenu();
         CloseClipboardMenu();
-        ViewMenuForm menu = new ViewMenuForm(_viewMode, _dpi, _fit);
+        ViewMenuForm menu = new ViewMenuForm(_viewMode, _showHidden, _dpi, _fit);
         _viewMenu = menu;
         menu.ModeChosen += delegate(BrowseViewMode mode) { SetViewMode(mode); };
+        menu.ShowHiddenChanged += delegate(bool show)
+        {
+            if (_showHidden == show)
+                return;
+            _showHidden = show;
+            Prefs.SaveShowHidden(_showHidden);
+            ReloadCurrentListing();
+        };
         menu.FormClosed += delegate
         {
             if (ReferenceEquals(_viewMenu, menu))
@@ -1338,9 +1348,12 @@ internal sealed class BrowseForm : Form
         _entries.Clear();
         SyncActionButtons();
 
+        bool showHidden = _showHidden;
         ThreadPool.QueueUserWorkItem(delegate
         {
-            DirectoryListing listing = thisPc ? DirectoryModel.ListThisPc() : DirectoryModel.ListPath(path);
+            DirectoryListing listing = thisPc
+                ? DirectoryModel.ListThisPc()
+                : DirectoryModel.ListPath(path, showHidden);
             BeginInvoke(new Action(delegate
             {
                 if (gen != _loadGen)
