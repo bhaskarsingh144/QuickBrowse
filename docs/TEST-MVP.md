@@ -14,7 +14,7 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] Click Downloads → detached pane opens with gap; lists folder
 - [ ] Single-click folder enters; single-click file opens with shell
 - [ ] Right-click item → shell menu (Open with / Properties / type verbs); empty area → background menu
-- [ ] Back / Up / crumbs / Ctrl+L·F4 edit path / New folder · Refresh · Clipboard (Copy/Cut/Paste) / Del / Explorer / Pin / view / ×; F5 · Ctrl+Shift+N · Ctrl+C/X/V; Esc / re-tap; Enter / Alt+Up / Delete key
+- [ ] Back / Up / crumbs / Ctrl+L·F4 edit path / Filter (Ctrl+F, Esc clears) / New folder · Refresh · Clipboard / Del / Explorer / Pin / view (+ Show hidden) / ×; F5 · Ctrl+Shift+N · Ctrl+C/X/V; Esc / re-tap; Enter / Alt+Up / Delete key
 - [ ] View dropdown: Tiles / Content / Details; preference survives restart
 - [ ] Access-denied / empty folder show status text
 - [ ] Tray → Show / Exit

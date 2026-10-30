@@ -24,10 +24,14 @@ internal sealed class BrowseForm : Form
     private readonly Panel _chrome;
     private readonly Panel _content;
     private readonly Panel _pathHost;
+    private readonly Panel _filterHost;
     private readonly ChromeToolButton _backBtn;
     private readonly ChromeToolButton _upBtn;
     private readonly TextBox _pathBox;
     private readonly ChromeToolButton _pathCopyBtn;
+    private readonly TextBox _filterBox;
+    private readonly ChromeToolButton _filterClearBtn;
+    private readonly Label _filterGlyph;
     private readonly ChromeToolButton _newFolderBtn;
     private readonly ChromeToolButton _refreshBtn;
     private readonly ChromeToolButton _clipboardBtn;
@@ -58,6 +62,9 @@ internal sealed class BrowseForm : Form
     private bool _showHidden;
     private bool _suppressPathEnter;
     private bool _pathEditing;
+    private bool _suppressFilter;
+    private string _filterText = "";
+    private Image _filterGlyphImage;
     private int _sortColumn;
     private bool _sortAsc = true;
     private int _hotIndex = -1;
@@ -143,6 +150,33 @@ internal sealed class BrowseForm : Form
 
         _pathHost.Controls.Add(_pathCopyBtn);
         _pathHost.Controls.Add(_pathBox);
+
+        _filterHost = new Panel();
+        _filterHost.BackColor = UiTheme.Raised;
+        _filterHost.Paint += PaintFilterHost;
+
+        _filterGlyph = new Label();
+        _filterGlyph.BackColor = UiTheme.Raised;
+        _filterGlyph.AutoSize = false;
+
+        _filterBox = new TextBox();
+        _filterBox.BorderStyle = BorderStyle.None;
+        _filterBox.BackColor = UiTheme.Raised;
+        _filterBox.ForeColor = UiTheme.Text;
+        _filterBox.TabStop = true;
+        _filterBox.TextChanged += OnFilterTextChanged;
+        _filterBox.KeyDown += OnFilterKeyDown;
+        _filterBox.Enter += delegate { _session.NoteActivity(); _filterHost.Invalidate(); };
+        _filterBox.Leave += delegate { _filterHost.Invalidate(); };
+        _filterBox.MouseDown += delegate { _session.NoteActivity(); };
+
+        _filterClearBtn = MakeIconTool();
+        _filterClearBtn.Click += delegate { ClearFilter(); };
+        _tips.SetToolTip(_filterClearBtn, "Clear filter");
+
+        _filterHost.Controls.Add(_filterClearBtn);
+        _filterHost.Controls.Add(_filterBox);
+        _filterHost.Controls.Add(_filterGlyph);
 
         _newFolderBtn = MakeIconTool();
         _newFolderBtn.Click += delegate { _session.NoteActivity(); CreateNewFolder(); };
@@ -238,6 +272,7 @@ internal sealed class BrowseForm : Form
         _chrome.Controls.Add(_clipboardBtn);
         _chrome.Controls.Add(_refreshBtn);
         _chrome.Controls.Add(_newFolderBtn);
+        _chrome.Controls.Add(_filterHost);
         _chrome.Controls.Add(_pathHost);
         _chrome.Controls.Add(_upBtn);
         _chrome.Controls.Add(_backBtn);
@@ -330,6 +365,7 @@ internal sealed class BrowseForm : Form
         _status.Font = _uiFont;
         _list.Font = _tileFont;
         _pathBox.Font = _uiFont;
+        _filterBox.Font = _uiFont;
         _menu.Font = _uiFont;
 
         ApplyGlyphs();
@@ -386,12 +422,22 @@ internal sealed class BrowseForm : Form
                 CancelPathEdit();
                 return true;
             }
+            if (!string.IsNullOrEmpty(_filterText))
+            {
+                ClearFilter();
+                return true;
+            }
             _session.ClosePane();
             return true;
         }
         if (keyData == (Keys.Control | Keys.L) || keyData == Keys.F4)
         {
             BeginPathEdit();
+            return true;
+        }
+        if (keyData == (Keys.Control | Keys.F))
+        {
+            FocusFilter();
             return true;
         }
         if (!_pathEditing)
@@ -466,19 +512,52 @@ internal sealed class BrowseForm : Form
             e.Graphics.DrawLine(pen, 0, _chrome.Height - 1, _chrome.Width, _chrome.Height - 1);
     }
 
-    private void PaintPathHost(object sender, PaintEventArgs e)
+    private void PaintPillHost(Graphics g, Control host, bool accent)
     {
-        Graphics g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        Rectangle r = new Rectangle(0, 0, _pathHost.Width - 1, _pathHost.Height - 1);
-        int radius = Math.Max(4, _pathHost.Height / 2);
+        Rectangle r = new Rectangle(0, 0, host.Width - 1, host.Height - 1);
+        int radius = Math.Max(4, host.Height / 2);
         using (var path = ChromeVisual.Round(r, radius))
         using (SolidBrush brush = new SolidBrush(UiTheme.Raised))
             g.FillPath(brush, path);
         using (var path = ChromeVisual.Round(r, radius))
-        using (Pen pen = new Pen(_pathEditing && _pathBox.Focused ? UiTheme.Accent : UiTheme.BorderSoft))
+        using (Pen pen = new Pen(accent ? UiTheme.Accent : UiTheme.BorderSoft))
             g.DrawPath(pen, path);
+    }
+
+    private void PaintFilterHost(object sender, PaintEventArgs e)
+    {
+        PaintPillHost(e.Graphics, _filterHost, _filterBox.Focused);
+        if (_filterGlyphImage != null)
+        {
+            try
+            {
+                int gw = _filterGlyphImage.Width;
+                int gh = _filterGlyphImage.Height;
+                int x = _filterGlyph.Left + (_filterGlyph.Width - gw) / 2;
+                int y = _filterGlyph.Top + (_filterGlyph.Height - gh) / 2;
+                e.Graphics.DrawImage(_filterGlyphImage, x, y, gw, gh);
+            }
+            catch (ArgumentException) { }
+            catch (ObjectDisposedException) { }
+        }
+        if (string.IsNullOrEmpty(_filterBox.Text) && !_filterBox.Focused && _uiFont != null)
+        {
+            TextRenderer.DrawText(
+                e.Graphics,
+                "Filter",
+                _uiFont,
+                new Rectangle(_filterBox.Left, 0, _filterBox.Width, _filterHost.Height),
+                UiTheme.Muted,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+        }
+    }
+
+    private void PaintPathHost(object sender, PaintEventArgs e)
+    {
+        Graphics g = e.Graphics;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+        PaintPillHost(g, _pathHost, _pathEditing && _pathBox.Focused);
 
         if (_pathEditing)
             return;
@@ -548,10 +627,14 @@ internal sealed class BrowseForm : Form
         _closeBtn.SetBounds(Width - edge - btnW, y1, btnW, btnH);
 
         int pathLeft = _upBtn.Right + group;
-        // Leave a reserved slot before Close for the future in-folder filter.
+        // Filter slot between path and Close.
         int pathRight = _closeBtn.Left - group - filterSlot - gap;
         int pathW = Math.Max(Px(160), pathRight - pathLeft);
         _pathHost.SetBounds(pathLeft, pathY, pathW, pathH);
+
+        int filterLeft = _pathHost.Right + gap;
+        int filterW = Math.Max(Px(120), _closeBtn.Left - group - filterLeft);
+        _filterHost.SetBounds(filterLeft, pathY, filterW, pathH);
 
         int inset = Px(8);
         int copySize = Math.Max(Px(22), pathH - Px(8));
@@ -573,6 +656,22 @@ internal sealed class BrowseForm : Form
             _pathBox.SetBounds(pathBoxLeft, pathBoxY, Math.Max(40, pathBoxRight - pathBoxLeft), pathBoxH);
             LayoutCrumbHits();
         }
+
+        int clearSize = copySize;
+        int clearY = Math.Max(1, (pathH - clearSize) / 2);
+        bool hasFilter = !string.IsNullOrEmpty(_filterText);
+        _filterClearBtn.Visible = hasFilter;
+        _filterClearBtn.SetBounds(filterW - inset - clearSize, clearY, clearSize, clearSize);
+
+        int searchSize = Math.Max(Px(14), pathH - Px(14));
+        int searchY = Math.Max(1, (pathH - searchSize) / 2);
+        _filterGlyph.SetBounds(inset, searchY, searchSize, searchSize);
+
+        int filterBoxLeft = _filterGlyph.Right + Px(6);
+        int filterBoxRight = hasFilter ? (_filterClearBtn.Left - Px(6)) : (filterW - inset);
+        int filterBoxH = pathBoxH;
+        int filterBoxY = pathBoxY;
+        _filterBox.SetBounds(filterBoxLeft, filterBoxY, Math.Max(40, filterBoxRight - filterBoxLeft), filterBoxH);
 
         // Organize cluster (left) + view segment (right), same baseline.
         int clipW = Px(ChromeLayout.PaneViewDropWidthDip);
@@ -602,6 +701,13 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_backBtn, ChromeIcons.Back(s));
         AssignGlyph(_upBtn, ChromeIcons.Up(s));
         AssignGlyph(_pathCopyBtn, ChromeIcons.Copy(pathS));
+        if (_filterGlyphImage != null)
+        {
+            try { _filterGlyphImage.Dispose(); }
+            catch { }
+        }
+        _filterGlyphImage = ChromeIcons.Search(Math.Max(14, Px(14)));
+        AssignGlyph(_filterClearBtn, ChromeIcons.Close(pathS));
         AssignGlyph(_newFolderBtn, ChromeIcons.NewFolder(s));
         AssignGlyph(_refreshBtn, ChromeIcons.Refresh(s));
         AssignGlyph(_clipboardBtn, ChromeIcons.Clipboard(s));
@@ -634,6 +740,13 @@ internal sealed class BrowseForm : Form
         _backBtn.Glyph = null;
         _upBtn.Glyph = null;
         _pathCopyBtn.Glyph = null;
+        _filterClearBtn.Glyph = null;
+        if (_filterGlyphImage != null)
+        {
+            try { _filterGlyphImage.Dispose(); }
+            catch { }
+            _filterGlyphImage = null;
+        }
         _newFolderBtn.Glyph = null;
         _refreshBtn.Glyph = null;
         _clipboardBtn.Glyph = null;
@@ -1064,6 +1177,7 @@ internal sealed class BrowseForm : Form
             PushCurrent();
         _thisPc = next.ThisPc;
         _currentPath = next.Path;
+        ClearFilter(false);
         SetPathText(next.ThisPc ? "This PC" : (next.Path ?? ""));
         SyncNavButtons();
         SyncActionButtons();
@@ -1387,7 +1501,7 @@ internal sealed class BrowseForm : Form
             _entries.Add(entries[i]);
         SortCachedEntries();
         RebuildItemsFromCache();
-        _status.Text = _entries.Count == 0 ? "Empty folder" : (_entries.Count + " items");
+        UpdateFilterStatus();
         SyncNavButtons();
         SyncActionButtons();
     }
@@ -1426,9 +1540,12 @@ internal sealed class BrowseForm : Form
         Size smallSz = _smallImages.ImageSize;
         Size largeSz = _largeImages.ImageSize;
 
+        string filter = _filterText ?? "";
         for (int i = 0; i < _entries.Count; i++)
         {
             DirEntry entry = _entries[i];
+            if (!PassesFilter(entry, filter))
+                continue;
             string key = i.ToString();
             Bitmap small = IconCache.FitCentered(
                 IconCache.GetOwned(entry.FullPath, entry.IsDirectory, false),
@@ -1464,6 +1581,107 @@ internal sealed class BrowseForm : Form
         _list.EndUpdate();
         ApplyTileMetrics();
         LayoutDetailColumns();
+    }
+
+    private static bool PassesFilter(DirEntry entry, string filter)
+    {
+        if (string.IsNullOrEmpty(filter))
+            return true;
+        if (entry == null || entry.Name == null)
+            return false;
+        return entry.Name.IndexOf(filter, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private void OnFilterTextChanged(object sender, EventArgs e)
+    {
+        if (_suppressFilter)
+            return;
+        _session.NoteActivity();
+        _filterText = _filterBox.Text ?? "";
+        RebuildItemsFromCache();
+        UpdateFilterStatus();
+        LayoutChromeButtons(_chrome.Height);
+        _filterHost.Invalidate();
+    }
+
+    private void OnFilterKeyDown(object sender, KeyEventArgs e)
+    {
+        _session.NoteActivity();
+        if (e.KeyCode == Keys.Escape)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            if (!string.IsNullOrEmpty(_filterText))
+                ClearFilter();
+            else
+                _list.Focus();
+        }
+    }
+
+    private void FocusFilter()
+    {
+        _session.NoteActivity();
+        if (_pathEditing)
+            CancelPathEdit();
+        _filterBox.Focus();
+        _filterBox.SelectAll();
+        _filterHost.Invalidate();
+    }
+
+    private void ClearFilter()
+    {
+        ClearFilter(true);
+    }
+
+    private void ClearFilter(bool rebuild)
+    {
+        if (string.IsNullOrEmpty(_filterText) && string.IsNullOrEmpty(_filterBox.Text))
+        {
+            if (rebuild)
+                LayoutChromeButtons(_chrome.Height);
+            return;
+        }
+        _suppressFilter = true;
+        try
+        {
+            _filterText = "";
+            _filterBox.Text = "";
+        }
+        finally
+        {
+            _suppressFilter = false;
+        }
+        if (rebuild)
+        {
+            RebuildItemsFromCache();
+            UpdateFilterStatus();
+            LayoutChromeButtons(_chrome.Height);
+            _filterHost.Invalidate();
+        }
+    }
+
+    private void UpdateFilterStatus()
+    {
+        int total = _entries.Count;
+        if (total == 0)
+        {
+            if (string.IsNullOrEmpty(_status.Text) || _status.Text.IndexOf("items", StringComparison.OrdinalIgnoreCase) >= 0
+                || _status.Text == "Empty folder" || _status.Text == "Nothing to show.")
+                _status.Text = "Empty folder";
+            return;
+        }
+        if (string.IsNullOrEmpty(_filterText))
+        {
+            _status.Text = total + " items";
+            return;
+        }
+        int shown = 0;
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (PassesFilter(_entries[i], _filterText))
+                shown++;
+        }
+        _status.Text = shown + " of " + total + " items";
     }
 
     /// <summary>

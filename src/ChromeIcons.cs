@@ -270,6 +270,23 @@ internal static class ChromeIcons
         });
     }
 
+    public static readonly Color SearchInk = Color.FromArgb(255, 0xA8, 0xB0, 0xBC);
+
+    public static Bitmap Search(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(SearchInk, Math.Max(1.4f, 1.45f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawEllipse(pen, 3.2f * u, 3.2f * u, 7.2f * u, 7.2f * u);
+                g.DrawLine(pen, 9.2f * u, 9.2f * u, 12.8f * u, 12.8f * u);
+            }
+        });
+    }
+
     public static readonly Color MoreInk = Color.FromArgb(255, 0xC5, 0xCB, 0xD6);
     public static readonly Color PinInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
     public static readonly Color RecentInk = Color.FromArgb(255, 0x9B, 0xD4, 0xFF);

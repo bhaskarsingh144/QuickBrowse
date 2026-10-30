@@ -59,7 +59,7 @@
 - [x] **Context menu v0:** **minimal** — Open, Copy path, Delete, Show in Explorer.
 - [x] **Drag-drop v0:** **none**.
 - [x] **Multi-select:** **later**.
-- [x] **Search:** **later**.
+- [x] **Search:** in-folder name **Filter** in the address row (not Windows indexed Search).
 - [x] **Hidden / system files:** View menu **Show hidden items** (persisted); System / protected OS files stay hidden.
 - [x] **Network / OneDrive / libraries:** no special UI; Known Folder redirects OK.
 - [x] **Permissions / UAC paths:** fail soft with message in the pane.
