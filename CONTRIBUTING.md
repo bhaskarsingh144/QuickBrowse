@@ -117,7 +117,7 @@ When reporting bugs, please include:
 - Screen resolution and DPI / display scale
 - Steps to reproduce
 - Expected vs actual behavior
-- Any relevant lines from `quickbrowse.log` (next to the exe)
+- Crash / error logs from `%LOCALAPPDATA%\QuickBrowse\logs\` (`last-fatal.log`, recent `crash_*.log`, and `app.log`)
 
 ## License
 
