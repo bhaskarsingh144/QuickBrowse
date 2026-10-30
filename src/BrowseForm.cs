@@ -126,7 +126,8 @@ internal sealed class BrowseForm : Form
         _tips.SetToolTip(_upBtn, "Up");
 
         _pathHost = new Panel();
-        _pathHost.BackColor = UiTheme.Raised;
+        // Match chrome surface so unclipped corners never flash Raised squares behind the pill.
+        _pathHost.BackColor = UiTheme.Surface;
         _pathHost.Paint += PaintPathHost;
         _pathHost.MouseMove += OnPathHostMouseMove;
         _pathHost.MouseLeave += OnPathHostMouseLeave;
@@ -160,7 +161,7 @@ internal sealed class BrowseForm : Form
         _pathHost.Controls.Add(_pathBox);
 
         _filterHost = new Panel();
-        _filterHost.BackColor = UiTheme.Raised;
+        _filterHost.BackColor = UiTheme.Surface;
         _filterHost.Paint += PaintFilterHost;
 
         _filterGlyph = new Label();
@@ -383,8 +384,7 @@ internal sealed class BrowseForm : Form
         Font = _uiFont;
         _status.Font = _uiFont;
         _list.Font = _tileFont;
-        _pathBox.Font = _uiFont;
-        _filterBox.Font = _uiFont;
+        EnsureFieldFonts();
         _ctxMenu.ApplyFont(_uiFont);
 
         ApplyGlyphs();
@@ -545,7 +545,8 @@ internal sealed class BrowseForm : Form
     private void PaintPillHost(Graphics g, Control host, bool accent)
     {
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-        Rectangle r = new Rectangle(0, 0, host.Width - 1, host.Height - 1);
+        // Full bounds — host Region already clips to the pill, so avoid inset that left square corners.
+        Rectangle r = new Rectangle(0, 0, Math.Max(1, host.Width - 1), Math.Max(1, host.Height - 1));
         int radius = Math.Max(4, host.Height / 2);
         using (var path = ChromeVisual.Round(r, radius))
         using (SolidBrush brush = new SolidBrush(UiTheme.Raised))
@@ -553,6 +554,13 @@ internal sealed class BrowseForm : Form
         using (var path = ChromeVisual.Round(r, radius))
         using (Pen pen = new Pen(accent ? UiTheme.Accent : UiTheme.BorderSoft))
             g.DrawPath(pen, path);
+    }
+
+    private static int PillRadius(Control host)
+    {
+        if (host == null || host.Height <= 0)
+            return 4;
+        return Math.Max(4, host.Height / 2);
     }
 
     private void PaintFilterHost(object sender, PaintEventArgs e)
@@ -666,15 +674,18 @@ internal sealed class BrowseForm : Form
         }
         _pathHost.SetBounds(pathLeft, pathY, pathW, pathH);
         _filterHost.SetBounds(_pathHost.Right + gap, pathY, filterW, pathH);
+        ChromeVisual.ApplyRoundedRegion(_pathHost, PillRadius(_pathHost));
+        ChromeVisual.ApplyRoundedRegion(_filterHost, PillRadius(_filterHost));
 
         int inset = Px(8);
         int copySize = Math.Max(Px(22), pathH - Px(8));
         int copyY = Math.Max(1, (pathH - copySize) / 2);
         _pathCopyBtn.SetBounds(pathW - inset - copySize, copyY, copySize, copySize);
 
+        EnsureFieldFonts();
         int pathBoxLeft = inset;
         int pathBoxRight = _pathCopyBtn.Left - Px(6);
-        int pathBoxH = Math.Min(_pathBox.PreferredHeight + Px(2), Math.Max(Px(16), pathH - Px(8)));
+        int pathBoxH = FieldTextHeight(pathH);
         int pathBoxY = Math.Max(1, (pathH - pathBoxH) / 2);
         if (_pathEditing)
         {
@@ -1315,6 +1326,30 @@ internal sealed class BrowseForm : Form
             _crumbs.RemoveAt(_crumbs.Count - 1);
     }
 
+    private void EnsureFieldFonts()
+    {
+        if (_uiFont == null)
+            return;
+        // Re-apply after handle creation — a hidden TextBox can keep the default 8.25pt face.
+        if (_pathBox.Font != _uiFont)
+            _pathBox.Font = _uiFont;
+        if (_filterBox.Font != _uiFont)
+            _filterBox.Font = _uiFont;
+    }
+
+    private int FieldTextHeight(int pathH)
+    {
+        Font font = _pathBox.Font ?? _uiFont ?? Font;
+        int textH = TextRenderer.MeasureText("Ay", font).Height;
+        int maxH = Math.Max(Px(16), pathH - Px(8));
+        int h = Math.Max(textH + Px(2), Math.Min(_pathBox.PreferredHeight + Px(2), maxH));
+        if (h > maxH)
+            h = maxH;
+        if (h < textH)
+            h = Math.Min(textH, maxH);
+        return h;
+    }
+
     private void BeginPathEdit()
     {
         if (_pathEditing)
@@ -1329,8 +1364,10 @@ internal sealed class BrowseForm : Form
         _suppressPathEnter = true;
         try { _pathBox.Text = text; }
         finally { _suppressPathEnter = false; }
+        EnsureFieldFonts();
         LayoutChromeButtons(_chrome.Height);
         _pathBox.Visible = true;
+        EnsureFieldFonts();
         _pathBox.BringToFront();
         _pathCopyBtn.BringToFront();
         _pathBox.Focus();
