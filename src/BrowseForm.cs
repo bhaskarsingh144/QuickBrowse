@@ -31,10 +31,8 @@ internal sealed class BrowseForm : Form
     private readonly ChromeToolButton _deleteBtn;
     private readonly ChromeToolButton _explorerBtn;
     private readonly ChromeToolButton _pinBtn;
-    private readonly ChromeToolButton _iconsBtn;
     private readonly ChromeToolButton _tilesBtn;
     private readonly ChromeToolButton _contentBtn;
-    private readonly ChromeToolButton _listBtn;
     private readonly ChromeToolButton _detailsBtn;
     private readonly ChromeToolButton _closeBtn;
     private readonly Label _status;
@@ -55,7 +53,7 @@ internal sealed class BrowseForm : Form
     private Font _uiFont;
     private Font _tileFont;
     private Font _metaFont;
-    private BrowseViewMode _viewMode = BrowseViewMode.Icons;
+    private BrowseViewMode _viewMode = BrowseViewMode.Tiles;
     private bool _suppressPathEnter;
     private int _sortColumn;
     private bool _sortAsc = true;
@@ -143,10 +141,6 @@ internal sealed class BrowseForm : Form
         _pinBtn.Click += delegate { TogglePinCurrent(); };
         _tips.SetToolTip(_pinBtn, "Pin folder");
 
-        _iconsBtn = MakeIconTool();
-        _iconsBtn.Click += delegate { SetViewMode(BrowseViewMode.Icons); };
-        _tips.SetToolTip(_iconsBtn, "Icons");
-
         _tilesBtn = MakeIconTool();
         _tilesBtn.Click += delegate { SetViewMode(BrowseViewMode.Tiles); };
         _tips.SetToolTip(_tilesBtn, "Tiles");
@@ -154,10 +148,6 @@ internal sealed class BrowseForm : Form
         _contentBtn = MakeIconTool();
         _contentBtn.Click += delegate { SetViewMode(BrowseViewMode.Content); };
         _tips.SetToolTip(_contentBtn, "Content");
-
-        _listBtn = MakeIconTool();
-        _listBtn.Click += delegate { SetViewMode(BrowseViewMode.List); };
-        _tips.SetToolTip(_listBtn, "List");
 
         _detailsBtn = MakeIconTool();
         _detailsBtn.Click += delegate { SetViewMode(BrowseViewMode.Details); };
@@ -221,10 +211,8 @@ internal sealed class BrowseForm : Form
 
         _chrome.Controls.Add(_closeBtn);
         _chrome.Controls.Add(_detailsBtn);
-        _chrome.Controls.Add(_listBtn);
         _chrome.Controls.Add(_contentBtn);
         _chrome.Controls.Add(_tilesBtn);
-        _chrome.Controls.Add(_iconsBtn);
         _chrome.Controls.Add(_pinBtn);
         _chrome.Controls.Add(_explorerBtn);
         _chrome.Controls.Add(_deleteBtn);
@@ -487,13 +475,11 @@ internal sealed class BrowseForm : Form
         _pinBtn.SetBounds(_explorerBtn.Right + gap, y2, btnW, btnH);
 
         int viewGap = Px(4);
-        int viewTotal = viewW * 5 + viewGap * 4;
+        int viewTotal = viewW * 3 + viewGap * 2;
         int viewLeft = Width - edge - viewTotal;
-        _iconsBtn.SetBounds(viewLeft, y2, viewW, btnH);
-        _tilesBtn.SetBounds(_iconsBtn.Right + viewGap, y2, viewW, btnH);
+        _tilesBtn.SetBounds(viewLeft, y2, viewW, btnH);
         _contentBtn.SetBounds(_tilesBtn.Right + viewGap, y2, viewW, btnH);
-        _listBtn.SetBounds(_contentBtn.Right + viewGap, y2, viewW, btnH);
-        _detailsBtn.SetBounds(_listBtn.Right + viewGap, y2, viewW, btnH);
+        _detailsBtn.SetBounds(_contentBtn.Right + viewGap, y2, viewW, btnH);
 
         _pathHost.Invalidate();
     }
@@ -514,10 +500,8 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_deleteBtn, ChromeIcons.Delete(s));
         AssignGlyph(_explorerBtn, ChromeIcons.Explorer(s));
         AssignGlyph(_pinBtn, ChromeIcons.Pin(s));
-        AssignGlyph(_iconsBtn, ChromeIcons.IconsView(s));
         AssignGlyph(_tilesBtn, ChromeIcons.TilesView(s));
         AssignGlyph(_contentBtn, ChromeIcons.ContentView(s));
-        AssignGlyph(_listBtn, ChromeIcons.ListView(s));
         AssignGlyph(_detailsBtn, ChromeIcons.DetailsView(s));
         AssignGlyph(_closeBtn, ChromeIcons.Close(s));
     }
@@ -537,10 +521,8 @@ internal sealed class BrowseForm : Form
         _deleteBtn.Glyph = null;
         _explorerBtn.Glyph = null;
         _pinBtn.Glyph = null;
-        _iconsBtn.Glyph = null;
         _tilesBtn.Glyph = null;
         _contentBtn.Glyph = null;
-        _listBtn.Glyph = null;
         _detailsBtn.Glyph = null;
         _closeBtn.Glyph = null;
         for (int i = 0; i < _glyphOwned.Count; i++)
@@ -558,7 +540,7 @@ internal sealed class BrowseForm : Form
 
     private bool UsesLargeGrid()
     {
-        return _viewMode == BrowseViewMode.Icons || _viewMode == BrowseViewMode.Tiles;
+        return _viewMode == BrowseViewMode.Tiles;
     }
 
     private void ApplyTileMetrics()
@@ -640,11 +622,6 @@ internal sealed class BrowseForm : Form
         EnsureColumns();
         switch (_viewMode)
         {
-            case BrowseViewMode.Icons:
-                _list.View = View.LargeIcon;
-                _list.HeaderStyle = ColumnHeaderStyle.None;
-                ApplyTileMetrics();
-                break;
             case BrowseViewMode.Tiles:
                 _list.View = View.Tile;
                 _list.HeaderStyle = ColumnHeaderStyle.None;
@@ -654,10 +631,6 @@ internal sealed class BrowseForm : Form
                 _list.View = View.Tile;
                 _list.HeaderStyle = ColumnHeaderStyle.None;
                 ApplyTileMetrics();
-                break;
-            case BrowseViewMode.List:
-                _list.View = View.List;
-                _list.HeaderStyle = ColumnHeaderStyle.None;
                 break;
             default:
                 _list.View = View.Details;
@@ -669,10 +642,8 @@ internal sealed class BrowseForm : Form
 
     private void SyncViewButtons()
     {
-        _iconsBtn.Selected = _viewMode == BrowseViewMode.Icons;
         _tilesBtn.Selected = _viewMode == BrowseViewMode.Tiles;
         _contentBtn.Selected = _viewMode == BrowseViewMode.Content;
-        _listBtn.Selected = _viewMode == BrowseViewMode.List;
         _detailsBtn.Selected = _viewMode == BrowseViewMode.Details;
     }
 
@@ -1128,108 +1099,12 @@ internal sealed class BrowseForm : Form
             e.DrawDefault = false;
             return;
         }
-        if (_list.View == View.List)
-        {
-            DrawListRowItem(e);
-            return;
-        }
         if (_viewMode == BrowseViewMode.Content)
         {
             DrawContentItem(e);
             return;
         }
-        if (_viewMode == BrowseViewMode.Tiles)
-        {
-            DrawTilesItem(e);
-            return;
-        }
-        DrawIconsItem(e);
-    }
-
-    private void DrawListRowItem(DrawListViewItemEventArgs e)
-    {
-        Graphics g = e.Graphics;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-        bool selected = e.Item.Selected;
-        bool hot = !selected && IsHotItem(e.Item);
-        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : (hot ? UiTheme.Hover : UiTheme.Bg)))
-            g.FillRectangle(bg, e.Bounds);
-
-        Image img = null;
-        if (!string.IsNullOrEmpty(e.Item.ImageKey) && _smallImages.Images.ContainsKey(e.Item.ImageKey))
-            img = _smallImages.Images[e.Item.ImageKey];
-        else if (e.Item.ImageIndex >= 0 && e.Item.ImageIndex < _smallImages.Images.Count)
-            img = _smallImages.Images[e.Item.ImageIndex];
-
-        int x = e.Bounds.X + Px(4);
-        if (img != null)
-        {
-            int iy = e.Bounds.Y + (e.Bounds.Height - img.Height) / 2;
-            g.DrawImage(img, x, iy, img.Width, img.Height);
-            x += img.Width + Px(6);
-        }
-
-        Font font = _uiFont ?? Font;
-        Rectangle textRect = new Rectangle(x, e.Bounds.Y, Math.Max(8, e.Bounds.Right - x - Px(4)), e.Bounds.Height);
-        Color ink = selected ? UiTheme.Accent : UiTheme.Text;
-        TextRenderer.DrawText(g, e.Item.Text ?? "", font, textRect, ink,
-            TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-        e.DrawDefault = false;
-    }
-
-    private void DrawIconsItem(DrawListViewItemEventArgs e)
-    {
-        Graphics g = e.Graphics;
-        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        bool selected = e.Item.Selected;
-        bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
-        if (selected || hot)
-            ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
-        else
-        {
-            using (SolidBrush bg = new SolidBrush(UiTheme.Bg))
-                g.FillRectangle(bg, e.Bounds);
-        }
-
-        Image img = ResolveLargeImage(e.Item);
-        Font font = _tileFont ?? _uiFont ?? Font;
-        int labelH = font != null ? (int)Math.Ceiling(font.GetHeight(g) * 2.15) + 4 : Px(32);
-        int pad = Px(6);
-        int iconAreaBottom = e.Bounds.Bottom - labelH - pad;
-        if (iconAreaBottom < e.Bounds.Top + pad)
-            iconAreaBottom = e.Bounds.Top + pad;
-
-        if (img != null)
-        {
-            int iw = img.Width;
-            int ih = img.Height;
-            int maxW = Math.Max(8, e.Bounds.Width - pad * 2);
-            int maxH = Math.Max(8, iconAreaBottom - e.Bounds.Top - pad);
-            float scale = Math.Min(1f, Math.Min((float)maxW / iw, (float)maxH / ih));
-            int dw = Math.Max(1, (int)Math.Round(iw * scale));
-            int dh = Math.Max(1, (int)Math.Round(ih * scale));
-            int ix = e.Bounds.X + (e.Bounds.Width - dw) / 2;
-            int iy = e.Bounds.Y + pad + Math.Max(0, (maxH - dh) / 2);
-            g.DrawImage(img, new Rectangle(ix, iy, dw, dh));
-        }
-
-        Rectangle labelRect = new Rectangle(
-            e.Bounds.X + pad,
-            e.Bounds.Bottom - labelH - pad / 2,
-            Math.Max(8, e.Bounds.Width - pad * 2),
-            labelH);
-        Color ink = selected ? UiTheme.Accent : UiTheme.Text;
-        using (SolidBrush brush = new SolidBrush(ink))
-        using (StringFormat fmt = new StringFormat())
-        {
-            fmt.Alignment = StringAlignment.Center;
-            fmt.LineAlignment = StringAlignment.Near;
-            fmt.Trimming = StringTrimming.EllipsisCharacter;
-            g.DrawString(e.Item.Text ?? "", font, brush, labelRect, fmt);
-        }
-        e.DrawDefault = false;
+        DrawTilesItem(e);
     }
 
     private void DrawTilesItem(DrawListViewItemEventArgs e)

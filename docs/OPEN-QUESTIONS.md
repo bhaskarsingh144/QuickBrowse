@@ -52,7 +52,7 @@
 
 ## 4. Browsing model (inside the pane)
 
-- [x] **View modes v0:** **List default** + **Tiles** toggle (top-right); pref persisted. Tile cells ~134×124 DIP / icons ~68 DIP.
+- [x] **View modes:** **Tiles** (default) / **Content** / **Details**; pref persisted. Legacy icons/list map to Tiles. Tile cells ~134×124 DIP / icons ~68 DIP.
 - [x] **Navigation:** **Back** + **Up**, editable path bar (Enter to go), **Copy** path, **Delete** selected (confirm).
 - [x] **Enter folder / open file:** **single click/tap** opens.
 - [x] **Open file:** default verb via `ShellExecute` / `Process.Start`.

@@ -18,7 +18,7 @@ internal static class PrefsTests
             DefaultWhenMissing();
             RoundTripAllModes();
             LegacyStrings();
-            UnknownDefaultsToIcons();
+            UnknownDefaultsToTiles();
         }
         finally
         {
@@ -35,17 +35,15 @@ internal static class PrefsTests
     {
         if (File.Exists(_viewPath))
             File.Delete(_viewPath);
-        Expect(Prefs.LoadViewMode() == BrowseViewMode.Icons, "default Icons");
+        Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "default Tiles");
     }
 
     private static void RoundTripAllModes()
     {
         BrowseViewMode[] modes = new BrowseViewMode[]
         {
-            BrowseViewMode.Icons,
             BrowseViewMode.Tiles,
             BrowseViewMode.Content,
-            BrowseViewMode.List,
             BrowseViewMode.Details
         };
         for (int i = 0; i < modes.Length; i++)
@@ -60,15 +58,17 @@ internal static class PrefsTests
         File.WriteAllText(_viewPath, "tiles");
         Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "legacy tiles");
         File.WriteAllText(_viewPath, "list");
-        Expect(Prefs.LoadViewMode() == BrowseViewMode.List, "legacy list");
+        Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "legacy list → Tiles");
         File.WriteAllText(_viewPath, "grid");
-        Expect(Prefs.LoadViewMode() == BrowseViewMode.Icons, "legacy grid → Icons");
+        Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "legacy grid → Tiles");
+        File.WriteAllText(_viewPath, "icons");
+        Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "legacy icons → Tiles");
     }
 
-    private static void UnknownDefaultsToIcons()
+    private static void UnknownDefaultsToTiles()
     {
         File.WriteAllText(_viewPath, "nope");
-        Expect(Prefs.LoadViewMode() == BrowseViewMode.Icons, "unknown → Icons");
+        Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "unknown → Tiles");
     }
 
     private static void Expect(bool ok, string label)

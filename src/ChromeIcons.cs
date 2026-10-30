@@ -10,9 +10,7 @@ internal static class ChromeIcons
     public static readonly Color CopyInk = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
     public static readonly Color DeleteInk = Color.FromArgb(255, 0xFF, 0x6B, 0x6B);
     public static readonly Color ExplorerInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
-    public static readonly Color ListInk = Color.FromArgb(255, 0xC5, 0xCB, 0xD6);
     public static readonly Color TilesInk = Color.FromArgb(255, 0x9B, 0xD4, 0xFF);
-    public static readonly Color IconsInk = Color.FromArgb(255, 0x8E, 0xC8, 0xFF);
     public static readonly Color ContentInk = Color.FromArgb(255, 0xA8, 0xD5, 0xA2);
     public static readonly Color DetailsInk = Color.FromArgb(255, 0xD0, 0xD4, 0xDC);
     public static readonly Color NavInk = Color.FromArgb(255, 0xE8, 0xEB, 0xF0);
@@ -134,26 +132,6 @@ internal static class ChromeIcons
         });
     }
 
-    public static Bitmap IconsView(int size)
-    {
-        return Make(size, delegate(Graphics g, int s)
-        {
-            float u = s / 16f;
-            using (Pen pen = new Pen(IconsInk, Math.Max(1.3f, 1.3f * u)))
-            using (SolidBrush fill = new SolidBrush(Color.FromArgb(55, IconsInk)))
-            {
-                RectangleF a = new RectangleF(3.2f * u, 3.2f * u, 4.2f * u, 4.2f * u);
-                RectangleF b = new RectangleF(8.6f * u, 3.2f * u, 4.2f * u, 4.2f * u);
-                RectangleF c = new RectangleF(3.2f * u, 8.6f * u, 4.2f * u, 4.2f * u);
-                RectangleF d = new RectangleF(8.6f * u, 8.6f * u, 4.2f * u, 4.2f * u);
-                g.FillRectangle(fill, a); g.DrawRectangle(pen, a.X, a.Y, a.Width, a.Height);
-                g.FillRectangle(fill, b); g.DrawRectangle(pen, b.X, b.Y, b.Width, b.Height);
-                g.FillRectangle(fill, c); g.DrawRectangle(pen, c.X, c.Y, c.Width, c.Height);
-                g.FillRectangle(fill, d); g.DrawRectangle(pen, d.X, d.Y, d.Width, d.Height);
-            }
-        });
-    }
-
     public static Bitmap TilesView(int size)
     {
         return Make(size, delegate(Graphics g, int s)
@@ -191,25 +169,6 @@ internal static class ChromeIcons
                 g.DrawLine(pen, 9.5f * u, 5.5f * u, 13f * u, 5.5f * u);
                 g.DrawLine(pen, 9.5f * u, 8.5f * u, 12.5f * u, 8.5f * u);
                 g.DrawLine(pen, 9.5f * u, 11.5f * u, 13f * u, 11.5f * u);
-            }
-        });
-    }
-
-    public static Bitmap ListView(int size)
-    {
-        return Make(size, delegate(Graphics g, int s)
-        {
-            float u = s / 16f;
-            using (Pen pen = new Pen(ListInk, Math.Max(1.4f, 1.5f * u)))
-            {
-                pen.StartCap = LineCap.Round;
-                pen.EndCap = LineCap.Round;
-                for (int i = 0; i < 3; i++)
-                {
-                    float y = (4.5f + i * 3.2f) * u;
-                    g.DrawLine(pen, 3.5f * u, y, 5.2f * u, y);
-                    g.DrawLine(pen, 6.5f * u, y, 12.5f * u, y);
-                }
             }
         });
     }
