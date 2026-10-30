@@ -425,7 +425,7 @@ internal sealed class BrowseForm : Form
 
     private void LayoutChromeButtons(int chromeH)
     {
-        // Row 1: Nav | Path | Close — Row 2: Organize | View (balanced sections).
+        // Row 1: Nav | Path | filter slot (reserved) | Close — Row 2: Organize | View.
         int edge = Px(12);
         int gap = Px(8);
         int group = Px(16);
@@ -433,11 +433,12 @@ internal sealed class BrowseForm : Form
         int btnW = Px(ChromeLayout.PaneChromeBtnWidthDip);
         int viewW = Px(ChromeLayout.PaneViewDropWidthDip);
         int pathH = Px(ChromeLayout.PanePathHeightDip);
+        int filterSlot = Px(ChromeLayout.PaneFilterSlotDip);
         int rowGap = Px(10);
         int topPad = Math.Max(Px(8), (chromeH - (btnH * 2 + rowGap)) / 2);
         int y1 = topPad;
         int y2 = y1 + btnH + rowGap;
-        // Path sits on the nav row, half-height, vertically centered with nav chips.
+        // Path sits on the nav row, vertically centered with nav chips.
         int pathY = y1 + (btnH - pathH) / 2;
 
         _backBtn.SetBounds(edge, y1, btnW, btnH);
@@ -445,18 +446,19 @@ internal sealed class BrowseForm : Form
         _closeBtn.SetBounds(Width - edge - btnW, y1, btnW, btnH);
 
         int pathLeft = _upBtn.Right + group;
-        int pathRight = _closeBtn.Left - group;
-        int pathW = Math.Max(Px(200), pathRight - pathLeft);
+        // Leave a reserved slot before Close for the future in-folder filter.
+        int pathRight = _closeBtn.Left - group - filterSlot - gap;
+        int pathW = Math.Max(Px(160), pathRight - pathLeft);
         _pathHost.SetBounds(pathLeft, pathY, pathW, pathH);
 
-        int inset = Px(6);
-        int copySize = Math.Max(Px(18), pathH - Px(4));
+        int inset = Px(8);
+        int copySize = Math.Max(Px(22), pathH - Px(8));
         int copyY = Math.Max(1, (pathH - copySize) / 2);
         _pathCopyBtn.SetBounds(pathW - inset - copySize, copyY, copySize, copySize);
 
         int pathBoxLeft = inset;
         int pathBoxRight = _pathCopyBtn.Left - Px(6);
-        int pathBoxH = Math.Min(_pathBox.PreferredHeight, Math.Max(Px(14), pathH - Px(4)));
+        int pathBoxH = Math.Min(_pathBox.PreferredHeight + Px(2), Math.Max(Px(16), pathH - Px(8)));
         int pathBoxY = Math.Max(1, (pathH - pathBoxH) / 2);
         _pathBox.SetBounds(pathBoxLeft, pathBoxY, Math.Max(40, pathBoxRight - pathBoxLeft), pathBoxH);
 
@@ -480,7 +482,7 @@ internal sealed class BrowseForm : Form
     {
         DisposeGlyphs();
         int s = Math.Max(20, Px(ChromeLayout.PaneChromeIconDip));
-        int pathS = Math.Max(14, Px(14));
+        int pathS = Math.Max(16, Px(16));
         AssignGlyph(_backBtn, ChromeIcons.Back(s));
         AssignGlyph(_upBtn, ChromeIcons.Up(s));
         AssignGlyph(_pathCopyBtn, ChromeIcons.Copy(pathS));

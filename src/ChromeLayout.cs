@@ -45,15 +45,18 @@ internal static class ChromeLayout
     public const float MetricMinPt = 9f;
 
     // Two-row pane chrome: nav/path on top, organize + view below.
-    public const int PaneChromeHeightDip = 108;
+    public const int PaneChromeHeightDip = 116;
     public const int PaneChromeBtnDip = 40;
     public const int PaneChromeBtnWidthDip = 52;
     public const int PaneChromeIconDip = 26;
-    public const int PanePathHeightDip = 24;
+    /// <summary>Path field — slightly shorter than chips so it reads as a field, not a button.</summary>
+    public const int PanePathHeightDip = 34;
     public const int PaneViewBtnWidthDip = 40;
     /// <summary>Single view-mode dropdown trigger (glyph + chevron).</summary>
     public const int PaneViewDropWidthDip = 56;
     public const int ViewMenuWidthDip = 168;
+    /// <summary>Row-1 reserved slot to the right of the path (filter arrives later).</summary>
+    public const int PaneFilterSlotDip = 200;
 
     // Larger icon cells with room for 2-line labels.
     public const int TileIconDip = 68;
