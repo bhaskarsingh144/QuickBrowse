@@ -48,6 +48,8 @@ internal sealed class BrowseForm : Form
     private readonly ImageList _largeImages;
     private readonly BrowseContextMenu _ctxMenu;
     private readonly ToolTip _tips;
+    private readonly ChromeHoverTip _itemTip;
+    private readonly System.Windows.Forms.Timer _itemTipTimer;
     private readonly List<NavState> _backStack = new List<NavState>();
     private readonly List<Image> _glyphOwned = new List<Image>();
     private readonly List<DirEntry> _entries = new List<DirEntry>();
@@ -73,6 +75,8 @@ internal sealed class BrowseForm : Form
     private int _sortColumn;
     private bool _sortAsc = true;
     private int _hotIndex = -1;
+    private int _tipIndex = -1;
+    private Point _tipClientPt;
     private int _crumbHot = -1;
     private ViewMenuForm _viewMenu;
     private readonly List<PathCrumbSeg> _crumbSource = new List<PathCrumbSeg>();
@@ -112,6 +116,17 @@ internal sealed class BrowseForm : Form
         _tips.InitialDelay = 450;
         _tips.ReshowDelay = 200;
         _tips.ShowAlways = true;
+        _tips.Popup += delegate
+        {
+            // Tooltip HWND is created during Popup — elevate on next message pump.
+            BeginInvoke(new MethodInvoker(ShellChrome.ElevateProcessToolTips));
+        };
+
+        // Native ListView item tips sit behind ShellChrome topmost pane — use our tip card.
+        _itemTip = new ChromeHoverTip();
+        _itemTipTimer = new System.Windows.Forms.Timer();
+        _itemTipTimer.Interval = 450;
+        _itemTipTimer.Tick += OnItemTipTimer;
 
         _chrome = new Panel();
         _chrome.Dock = DockStyle.Top;
@@ -260,7 +275,7 @@ internal sealed class BrowseForm : Form
         _list.SmallImageList = _smallImages;
         _list.LargeImageList = _largeImages;
         _list.HideSelection = false;
-        _list.ShowItemToolTips = true;
+        _list.ShowItemToolTips = false;
         _list.Alignment = ListViewAlignment.SnapToGrid;
         _list.OwnerDraw = true;
         _list.DrawItem += OnListDrawItem;
@@ -359,6 +374,13 @@ internal sealed class BrowseForm : Form
         _smallImages.Dispose();
         _largeImages.Dispose();
         if (_ctxMenu != null) _ctxMenu.Dispose();
+        if (_itemTipTimer != null)
+        {
+            _itemTipTimer.Stop();
+            _itemTipTimer.Dispose();
+        }
+        if (_itemTip != null && !_itemTip.IsDisposed)
+            _itemTip.Dispose();
         _tips.Dispose();
         base.OnFormClosed(e);
     }
@@ -1603,6 +1625,10 @@ internal sealed class BrowseForm : Form
     private void ClearListAndImages()
     {
         _hotIndex = -1;
+        _tipIndex = -1;
+        if (_itemTipTimer != null)
+            _itemTipTimer.Stop();
+        HideItemTip();
         _list.BeginUpdate();
         // Detach imagelists before Clear so a paint cannot touch disposed bitmaps.
         _list.SmallImageList = null;
@@ -1821,12 +1847,47 @@ internal sealed class BrowseForm : Form
     {
         _session.NoteActivity();
         ListViewItem item = FindItemAtPoint(e.Location);
-        SetHotIndex(item != null ? item.Index : -1);
+        int index = item != null ? item.Index : -1;
+        SetHotIndex(index);
+        _tipClientPt = e.Location;
+        if (index != _tipIndex)
+        {
+            _tipIndex = index;
+            HideItemTip();
+            if (index >= 0)
+            {
+                _itemTipTimer.Stop();
+                _itemTipTimer.Start();
+            }
+        }
     }
 
     private void OnListMouseLeave(object sender, EventArgs e)
     {
         SetHotIndex(-1);
+        _tipIndex = -1;
+        _itemTipTimer.Stop();
+        HideItemTip();
+    }
+
+    private void OnItemTipTimer(object sender, EventArgs e)
+    {
+        _itemTipTimer.Stop();
+        if (_tipIndex < 0 || _tipIndex >= _list.Items.Count)
+            return;
+        ListViewItem item = _list.Items[_tipIndex];
+        DirEntry entry = item.Tag as DirEntry;
+        string text = BuildItemTip(entry);
+        if (string.IsNullOrEmpty(text))
+            return;
+        Point screen = _list.PointToScreen(_tipClientPt);
+        _itemTip.ShowTip(this, text, screen, _uiFont ?? Font);
+    }
+
+    private void HideItemTip()
+    {
+        if (_itemTip != null && !_itemTip.IsDisposed)
+            _itemTip.HideTip();
     }
 
     private static string BuildItemTip(DirEntry entry)
@@ -2099,6 +2160,8 @@ internal sealed class BrowseForm : Form
         if (e.Button != MouseButtons.Right)
             return;
 
+        _itemTipTimer.Stop();
+        HideItemTip();
         try
         {
             ListViewItem item = FindItemAtPoint(e.Location);
