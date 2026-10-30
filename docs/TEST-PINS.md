@@ -30,7 +30,7 @@ Run `scripts\test.ps1` then `scripts\build.ps1` / launch `bin\QuickBrowse.exe` b
 ## Regression (shipped)
 
 - [ ] All system places open; labels unclipped
-- [ ] Views Icons / Tiles / Content / List / Details; pref survives restart
+- [ ] View dropdown (Tiles / Content / Details); pref survives restart
 - [ ] Path Enter / Copy / Back / Up / Delete / Explorer / Close / Esc
 - [ ] This PC = computer glyph (not folder)
 - [ ] Tray Show / Exit; single instance

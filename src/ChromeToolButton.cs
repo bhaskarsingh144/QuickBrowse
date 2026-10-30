@@ -11,6 +11,7 @@ internal sealed class ChromeToolButton : Button
     private bool _hot;
     private bool _pressed;
     private bool _selected;
+    private bool _showChevron;
     private Image _glyph;
 
     public ChromeToolButton()
@@ -43,6 +44,18 @@ internal sealed class ChromeToolButton : Button
         {
             if (_selected == value) return;
             _selected = value;
+            Invalidate();
+        }
+    }
+
+    /// <summary>Draw a small chevron to the right of the glyph (dropdown affordance).</summary>
+    public bool ShowChevron
+    {
+        get { return _showChevron; }
+        set
+        {
+            if (_showChevron == value) return;
+            _showChevron = value;
             Invalidate();
         }
     }
@@ -121,13 +134,34 @@ internal sealed class ChromeToolButton : Button
             {
                 int gw = _glyph.Width;
                 int gh = _glyph.Height;
-                int x = (Width - gw) / 2;
+                int chevronW = _showChevron ? Math.Max(8, Height / 5) : 0;
+                int gap = _showChevron ? Math.Max(3, Height / 12) : 0;
+                int contentW = gw + gap + chevronW;
+                int x = (Width - contentW) / 2;
                 int y = (Height - gh) / 2;
                 g.DrawImage(_glyph, x, y, gw, gh);
+                if (_showChevron)
+                {
+                    Color chevron = Enabled ? UiTheme.Muted : UiTheme.Border;
+                    using (Pen pen = new Pen(chevron, Math.Max(1.2f, Height / 22f)))
+                    {
+                        pen.StartCap = LineCap.Round;
+                        pen.EndCap = LineCap.Round;
+                        float cx = x + gw + gap + chevronW * 0.45f;
+                        float cy = Height * 0.5f;
+                        float arm = Math.Max(2.5f, chevronW * 0.35f);
+                        g.DrawLines(pen, new PointF[]
+                        {
+                            new PointF(cx - arm, cy - arm * 0.55f),
+                            new PointF(cx, cy + arm * 0.45f),
+                            new PointF(cx + arm, cy - arm * 0.55f)
+                        });
+                    }
+                }
                 if (!Enabled)
                 {
                     using (SolidBrush dim = new SolidBrush(Color.FromArgb(140, Parent != null ? Parent.BackColor : UiTheme.Surface)))
-                        g.FillRectangle(dim, x, y, gw, gh);
+                        g.FillRectangle(dim, x, y, contentW, gh);
                 }
             }
             catch (ArgumentException)
