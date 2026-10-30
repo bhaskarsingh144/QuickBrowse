@@ -28,6 +28,9 @@ internal sealed class BrowseForm : Form
     private readonly ChromeToolButton _upBtn;
     private readonly TextBox _pathBox;
     private readonly ChromeToolButton _pathCopyBtn;
+    private readonly ChromeToolButton _newFolderBtn;
+    private readonly ChromeToolButton _refreshBtn;
+    private readonly ChromeToolButton _clipboardBtn;
     private readonly ChromeToolButton _deleteBtn;
     private readonly ChromeToolButton _explorerBtn;
     private readonly ChromeToolButton _pinBtn;
@@ -59,6 +62,7 @@ internal sealed class BrowseForm : Form
     private int _hotIndex = -1;
     private int _crumbHot = -1;
     private ViewMenuForm _viewMenu;
+    private ClipboardMenuForm _clipboardMenu;
     private readonly List<PathCrumbSeg> _crumbSource = new List<PathCrumbSeg>();
     private readonly List<PathCrumbSeg> _crumbs = new List<PathCrumbSeg>();
     private readonly List<Rectangle> _crumbHits = new List<Rectangle>();
@@ -138,6 +142,19 @@ internal sealed class BrowseForm : Form
         _pathHost.Controls.Add(_pathCopyBtn);
         _pathHost.Controls.Add(_pathBox);
 
+        _newFolderBtn = MakeIconTool();
+        _newFolderBtn.Click += delegate { _session.NoteActivity(); CreateNewFolder(); };
+        _tips.SetToolTip(_newFolderBtn, "New folder");
+
+        _refreshBtn = MakeIconTool();
+        _refreshBtn.Click += delegate { _session.NoteActivity(); ReloadCurrentListing(); };
+        _tips.SetToolTip(_refreshBtn, "Refresh");
+
+        _clipboardBtn = MakeIconTool();
+        _clipboardBtn.ShowChevron = true;
+        _clipboardBtn.Click += delegate { ToggleClipboardMenu(); };
+        _tips.SetToolTip(_clipboardBtn, "Clipboard");
+
         _deleteBtn = MakeIconTool();
         _deleteBtn.Click += delegate { _session.NoteActivity(); DeleteSelected(); };
         _tips.SetToolTip(_deleteBtn, "Delete");
@@ -216,6 +233,9 @@ internal sealed class BrowseForm : Form
         _chrome.Controls.Add(_pinBtn);
         _chrome.Controls.Add(_explorerBtn);
         _chrome.Controls.Add(_deleteBtn);
+        _chrome.Controls.Add(_clipboardBtn);
+        _chrome.Controls.Add(_refreshBtn);
+        _chrome.Controls.Add(_newFolderBtn);
         _chrome.Controls.Add(_pathHost);
         _chrome.Controls.Add(_upBtn);
         _chrome.Controls.Add(_backBtn);
@@ -261,6 +281,7 @@ internal sealed class BrowseForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         CloseViewMenu();
+        CloseClipboardMenu();
         if (_uiFont != null) { _uiFont.Dispose(); _uiFont = null; }
         if (_tileFont != null) { _tileFont.Dispose(); _tileFont = null; }
         if (_metaFont != null) { _metaFont.Dispose(); _metaFont = null; }
@@ -370,6 +391,34 @@ internal sealed class BrowseForm : Form
         {
             BeginPathEdit();
             return true;
+        }
+        if (!_pathEditing)
+        {
+            if (keyData == Keys.F5)
+            {
+                ReloadCurrentListing();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.Shift | Keys.N))
+            {
+                CreateNewFolder();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.C))
+            {
+                ClipboardCopySelected(false);
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.X))
+            {
+                ClipboardCopySelected(true);
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.V))
+            {
+                ClipboardPaste();
+                return true;
+            }
         }
         if (keyData == (Keys.Alt | Keys.Up))
         {
@@ -524,7 +573,11 @@ internal sealed class BrowseForm : Form
         }
 
         // Organize cluster (left) + view segment (right), same baseline.
-        _deleteBtn.SetBounds(edge, y2, btnW, btnH);
+        int clipW = Px(ChromeLayout.PaneViewDropWidthDip);
+        _newFolderBtn.SetBounds(edge, y2, btnW, btnH);
+        _refreshBtn.SetBounds(_newFolderBtn.Right + gap, y2, btnW, btnH);
+        _clipboardBtn.SetBounds(_refreshBtn.Right + gap, y2, clipW, btnH);
+        _deleteBtn.SetBounds(_clipboardBtn.Right + group, y2, btnW, btnH);
         _explorerBtn.SetBounds(_deleteBtn.Right + gap, y2, btnW, btnH);
         _pinBtn.SetBounds(_explorerBtn.Right + gap, y2, btnW, btnH);
 
@@ -547,6 +600,9 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_backBtn, ChromeIcons.Back(s));
         AssignGlyph(_upBtn, ChromeIcons.Up(s));
         AssignGlyph(_pathCopyBtn, ChromeIcons.Copy(pathS));
+        AssignGlyph(_newFolderBtn, ChromeIcons.NewFolder(s));
+        AssignGlyph(_refreshBtn, ChromeIcons.Refresh(s));
+        AssignGlyph(_clipboardBtn, ChromeIcons.Clipboard(s));
         AssignGlyph(_deleteBtn, ChromeIcons.Delete(s));
         AssignGlyph(_explorerBtn, ChromeIcons.Explorer(s));
         AssignGlyph(_pinBtn, ChromeIcons.Pin(s));
@@ -576,6 +632,9 @@ internal sealed class BrowseForm : Form
         _backBtn.Glyph = null;
         _upBtn.Glyph = null;
         _pathCopyBtn.Glyph = null;
+        _newFolderBtn.Glyph = null;
+        _refreshBtn.Glyph = null;
+        _clipboardBtn.Glyph = null;
         _deleteBtn.Glyph = null;
         _explorerBtn.Glyph = null;
         _pinBtn.Glyph = null;
@@ -735,6 +794,7 @@ internal sealed class BrowseForm : Form
             return;
         }
         CloseViewMenu();
+        CloseClipboardMenu();
         ViewMenuForm menu = new ViewMenuForm(_viewMode, _dpi, _fit);
         _viewMenu = menu;
         menu.ModeChosen += delegate(BrowseViewMode mode) { SetViewMode(mode); };
@@ -763,6 +823,132 @@ internal sealed class BrowseForm : Form
         _viewMenu = null;
     }
 
+    private void ToggleClipboardMenu()
+    {
+        _session.NoteActivity();
+        if (_clipboardMenu != null && !_clipboardMenu.IsDisposed && _clipboardMenu.Visible)
+        {
+            _clipboardMenu.Close();
+            return;
+        }
+        CloseClipboardMenu();
+        CloseViewMenu();
+        DirEntry entry = SelectedEntry();
+        bool canCopyCut = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
+        bool canPaste = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
+            && ShellClipboard.CanPaste();
+        ClipboardMenuForm menu = new ClipboardMenuForm(canCopyCut, canPaste, _dpi, _fit);
+        _clipboardMenu = menu;
+        menu.ActionChosen += OnClipboardAction;
+        menu.FormClosed += delegate
+        {
+            if (ReferenceEquals(_clipboardMenu, menu))
+                _clipboardMenu = null;
+            if (!_clipboardBtn.IsDisposed)
+                _clipboardBtn.Selected = false;
+        };
+        menu.PlaceBelow(_clipboardBtn);
+        menu.Show(this);
+        if (menu.IsHandleCreated)
+            ShellChrome.ZOrder(menu.Handle, true);
+        _clipboardBtn.Selected = true;
+    }
+
+    private void CloseClipboardMenu()
+    {
+        if (_clipboardMenu == null || _clipboardMenu.IsDisposed)
+        {
+            _clipboardMenu = null;
+            return;
+        }
+        _clipboardMenu.Close();
+        _clipboardMenu = null;
+    }
+
+    private void OnClipboardAction(ClipboardMenuAction action)
+    {
+        switch (action)
+        {
+            case ClipboardMenuAction.Copy:
+                ClipboardCopySelected(false);
+                break;
+            case ClipboardMenuAction.Cut:
+                ClipboardCopySelected(true);
+                break;
+            case ClipboardMenuAction.Paste:
+                ClipboardPaste();
+                break;
+        }
+    }
+
+    private void ClipboardCopySelected(bool cut)
+    {
+        _session.NoteActivity();
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+        {
+            _status.Text = cut ? "Nothing to cut" : "Nothing to copy";
+            return;
+        }
+        if (ShellClipboard.SetFiles(new string[] { entry.FullPath }, cut))
+            _status.Text = cut ? "Cut to clipboard" : "Copied to clipboard";
+        else
+            _status.Text = "Clipboard failed";
+    }
+
+    private void ClipboardPaste()
+    {
+        _session.NoteActivity();
+        if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
+        {
+            _status.Text = "Cannot paste here";
+            return;
+        }
+        string status;
+        if (ShellClipboard.PasteInto(_currentPath, out status))
+        {
+            _status.Text = status ?? "Pasted";
+            ReloadCurrentListing();
+        }
+        else
+            _status.Text = status ?? "Paste failed";
+    }
+
+    private void CreateNewFolder()
+    {
+        _session.NoteActivity();
+        if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
+        {
+            _status.Text = "Cannot create a folder here";
+            return;
+        }
+        try
+        {
+            string dest = UniqueNewFolderPath(_currentPath);
+            Directory.CreateDirectory(dest);
+            _status.Text = "Created " + Path.GetFileName(dest);
+            ReloadCurrentListing();
+        }
+        catch (Exception ex)
+        {
+            _status.Text = ex.Message;
+        }
+    }
+
+    private static string UniqueNewFolderPath(string parent)
+    {
+        string dest = Path.Combine(parent, "New folder");
+        if (!Directory.Exists(dest) && !File.Exists(dest))
+            return dest;
+        for (int n = 2; n < 1000; n++)
+        {
+            dest = Path.Combine(parent, "New folder (" + n + ")");
+            if (!Directory.Exists(dest) && !File.Exists(dest))
+                return dest;
+        }
+        return Path.Combine(parent, "New folder (" + Guid.NewGuid().ToString("N").Substring(0, 6) + ")");
+    }
+
     private void SyncNavButtons()
     {
         _backBtn.Enabled = _backStack.Count > 0;
@@ -773,6 +959,10 @@ internal sealed class BrowseForm : Form
     {
         DirEntry entry = SelectedEntry();
         bool canDelete = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
+        bool canNewFolder = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath);
+        _newFolderBtn.Enabled = canNewFolder;
+        _refreshBtn.Enabled = true;
+        _clipboardBtn.Enabled = true;
         _deleteBtn.Enabled = canDelete;
         _pathCopyBtn.Enabled = true;
         SyncPinChrome();
