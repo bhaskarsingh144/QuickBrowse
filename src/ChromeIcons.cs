@@ -15,6 +15,9 @@ internal static class ChromeIcons
     public static readonly Color DetailsInk = Color.FromArgb(255, 0xD0, 0xD4, 0xDC);
     public static readonly Color NavInk = Color.FromArgb(255, 0xE8, 0xEB, 0xF0);
     public static readonly Color CloseInk = Color.FromArgb(255, 0xB8, 0xBE, 0xC8);
+    public static readonly Color NewFolderInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
+    public static readonly Color RefreshInk = Color.FromArgb(255, 0x9B, 0xD4, 0xFF);
+    public static readonly Color ClipboardInk = Color.FromArgb(255, 0xC5, 0xCB, 0xD6);
 
     public static Bitmap Make(int size, Action<Graphics, int> draw)
     {
@@ -205,6 +208,64 @@ internal static class ChromeIcons
                 float m = s * 0.28f;
                 g.DrawLine(pen, m, m, s - m, s - m);
                 g.DrawLine(pen, s - m, m, m, s - m);
+            }
+        });
+    }
+
+    public static Bitmap NewFolder(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(70, NewFolderInk)))
+            using (Pen pen = new Pen(NewFolderInk, Math.Max(1.3f, 1.4f * u)))
+            {
+                g.FillRectangle(fill, 3f * u, 4f * u, 5f * u, 2.2f * u);
+                g.DrawRectangle(pen, 3f * u, 4f * u, 5f * u, 2.2f * u);
+                RectangleF body = new RectangleF(3f * u, 6f * u, 10f * u, 7f * u);
+                g.FillRectangle(fill, body);
+                g.DrawRectangle(pen, body.X, body.Y, body.Width, body.Height);
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawLine(pen, 10.5f * u, 8f * u, 10.5f * u, 12f * u);
+                g.DrawLine(pen, 8.5f * u, 10f * u, 12.5f * u, 10f * u);
+            }
+        });
+    }
+
+    public static Bitmap Refresh(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(RefreshInk, Math.Max(1.5f, 1.5f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                RectangleF arc = new RectangleF(3.5f * u, 3.5f * u, 9f * u, 9f * u);
+                g.DrawArc(pen, arc, 40f, 250f);
+                g.DrawLines(pen, new PointF[]
+                {
+                    new PointF(11.5f * u, 3.2f * u),
+                    new PointF(13f * u, 5.5f * u),
+                    new PointF(10.2f * u, 6.2f * u)
+                });
+            }
+        });
+    }
+
+    public static Bitmap Clipboard(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(ClipboardInk, Math.Max(1.3f, 1.35f * u)))
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(50, ClipboardInk)))
+            {
+                RectangleF board = new RectangleF(4.5f * u, 3.5f * u, 7f * u, 10f * u);
+                g.FillRectangle(fill, board);
+                g.DrawRectangle(pen, board.X, board.Y, board.Width, board.Height);
+                g.DrawRectangle(pen, 6f * u, 2.5f * u, 4f * u, 2.2f * u);
             }
         });
     }
