@@ -32,6 +32,39 @@ internal static class Prefs
         return Path.Combine(Dir(), "view.txt");
     }
 
+    private static string HiddenPath()
+    {
+        return Path.Combine(Dir(), "hidden.txt");
+    }
+
+    public static bool LoadShowHidden()
+    {
+        try
+        {
+            string path = HiddenPath();
+            if (!File.Exists(path))
+                return false;
+            string text = File.ReadAllText(path).Trim().ToLowerInvariant();
+            return text == "1" || text == "true" || text == "yes" || text == "on";
+        }
+        catch
+        {
+        }
+        return false;
+    }
+
+    public static void SaveShowHidden(bool show)
+    {
+        try
+        {
+            Directory.CreateDirectory(Dir());
+            File.WriteAllText(HiddenPath(), show ? "1" : "0");
+        }
+        catch
+        {
+        }
+    }
+
     public static BrowseViewMode LoadViewMode()
     {
         try
