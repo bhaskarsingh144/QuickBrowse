@@ -108,9 +108,9 @@ Run-Suite "RecentSourceTests" @(
     (Join-Path $testsDir "RecentSourceTests.cs")
 ) "RecentSourceTests.exe" $core
 
-Run-Suite "ShellContextMenuTests" @(
-    (Join-Path $srcDir "ShellContextMenu.cs"),
-    (Join-Path $testsDir "ShellContextMenuTests.cs")
-) "ShellContextMenuTests.exe" $drawing
+Run-Suite "ShellFileOpsTests" @(
+    (Join-Path $srcDir "ShellFileOps.cs"),
+    (Join-Path $testsDir "ShellFileOpsTests.cs")
+) "ShellFileOpsTests.exe" $drawing
 
 Write-Host "All tests passed." -ForegroundColor Green

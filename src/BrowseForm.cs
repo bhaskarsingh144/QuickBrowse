@@ -44,7 +44,7 @@ internal sealed class BrowseForm : Form
     private readonly ListView _list;
     private readonly ImageList _smallImages;
     private readonly ImageList _largeImages;
-    private readonly ContextMenuStrip _menu;
+    private readonly BrowseContextMenu _ctxMenu;
     private readonly ToolTip _tips;
     private readonly List<NavState> _backStack = new List<NavState>();
     private readonly List<Image> _glyphOwned = new List<Image>();
@@ -267,12 +267,21 @@ internal sealed class BrowseForm : Form
         EnsureColumns();
         ApplyViewMode();
 
-        _menu = new ContextMenuStrip();
-        _menu.Items.Add("Open", null, delegate { ActivateSelected(); });
-        _menu.Items.Add("Pin folder", null, delegate { PinSelectedFolder(); });
-        _menu.Items.Add("Copy path", null, delegate { CopySelectedPath(); });
-        _menu.Items.Add("Delete", null, delegate { DeleteSelected(); });
-        _menu.Items.Add("Show in Explorer", null, delegate { ShowSelectedInExplorer(); });
+        _ctxMenu = new BrowseContextMenu();
+        _ctxMenu.OpenRequested += delegate { ActivateSelected(); };
+        _ctxMenu.PinToggleRequested += delegate { PinSelectedFolder(); };
+        _ctxMenu.CutRequested += delegate { ClipboardCopySelected(true); };
+        _ctxMenu.CopyRequested += delegate { ClipboardCopySelected(false); };
+        _ctxMenu.CopyPathRequested += delegate { CopySelectedPath(); };
+        _ctxMenu.RenameRequested += delegate { RenameSelected(); };
+        _ctxMenu.DeleteRequested += delegate { DeleteSelected(); };
+        _ctxMenu.ExplorerRequested += delegate { ShowSelectedInExplorer(); };
+        _ctxMenu.PropertiesRequested += delegate { ShowSelectedProperties(); };
+        _ctxMenu.NewFolderRequested += delegate { CreateNewFolder(); };
+        _ctxMenu.PasteRequested += delegate { ClipboardPaste(); };
+        _ctxMenu.RefreshRequested += delegate { ReloadCurrentListing(); };
+        _ctxMenu.BackgroundExplorerRequested += delegate { OpenInExplorer(); };
+        _ctxMenu.BackgroundPropertiesRequested += delegate { ShowFolderProperties(); };
 
         _chrome.Controls.Add(_closeBtn);
         _chrome.Controls.Add(_viewBtn);
@@ -335,7 +344,7 @@ internal sealed class BrowseForm : Form
         DisposeGlyphs();
         _smallImages.Dispose();
         _largeImages.Dispose();
-        _menu.Dispose();
+        if (_ctxMenu != null) _ctxMenu.Dispose();
         _tips.Dispose();
         base.OnFormClosed(e);
     }
@@ -376,7 +385,7 @@ internal sealed class BrowseForm : Form
         _list.Font = _tileFont;
         _pathBox.Font = _uiFont;
         _filterBox.Font = _uiFont;
-        _menu.Font = _uiFont;
+        _ctxMenu.ApplyFont(_uiFont);
 
         ApplyGlyphs();
         RebuildCrumbs();
@@ -620,8 +629,6 @@ internal sealed class BrowseForm : Form
     protected override void WndProc(ref Message m)
     {
         if (ShellChrome.SwallowMinimize(ref m))
-            return;
-        if (ShellContextMenu.TryHandleMenuMessage(ref m))
             return;
         base.WndProc(ref m);
     }
@@ -1142,7 +1149,6 @@ internal sealed class BrowseForm : Form
         _deleteBtn.Enabled = canDelete;
         _pathCopyBtn.Enabled = true;
         SyncPinChrome();
-        SyncPinMenuItem();
     }
 
     public void SyncPinChrome()
@@ -1178,21 +1184,6 @@ internal sealed class BrowseForm : Form
     {
         path = _currentPath;
         thisPc = _thisPc;
-    }
-
-    private void SyncPinMenuItem()
-    {
-        DirEntry entry = SelectedEntry();
-        bool folder = entry != null && entry.IsDirectory && !string.IsNullOrEmpty(entry.FullPath);
-        if (_menu.Items.Count > 1)
-            _menu.Items[1].Enabled = folder;
-        if (folder && _menu.Items.Count > 1)
-        {
-            bool pinned = _session.IsPathPinned(entry.FullPath);
-            _menu.Items[1].Text = pinned ? "Unpin folder" : "Pin folder";
-        }
-        else if (_menu.Items.Count > 1)
-            _menu.Items[1].Text = "Pin folder";
     }
 
     private void TogglePinCurrent()
@@ -1234,7 +1225,6 @@ internal sealed class BrowseForm : Form
                 SetActionStatus("Could not pin");
         }
         SyncPinChrome();
-        SyncPinMenuItem();
     }
 
     private void GoToState(NavState next, bool pushCurrent, bool notifyHost)
@@ -2109,72 +2099,30 @@ internal sealed class BrowseForm : Form
         if (e.Button != MouseButtons.Right)
             return;
 
-        Point screen = _list.PointToScreen(e.Location);
-        bool extended = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        ListViewItem item = FindItemAtPoint(e.Location);
-
-        if (item != null)
+        try
         {
-            item.Selected = true;
-            SyncActionButtons();
-            DirEntry entry = item.Tag as DirEntry;
-            if (entry == null || string.IsNullOrEmpty(entry.FullPath))
-                return;
-            bool pinned = entry.IsDirectory && _session.IsPathPinned(entry.FullPath);
-            ShellContextMenu.ShowResult shell = ShellContextMenu.ShowForItem(
-                Handle,
-                entry.FullPath,
-                screen,
-                entry.IsDirectory,
-                pinned,
-                extended);
-            if (!shell.Shown)
+            ListViewItem item = FindItemAtPoint(e.Location);
+            if (item != null)
             {
-                SyncPinMenuItem();
-                _menu.Show(_list, e.Location);
+                item.Selected = true;
+                SyncActionButtons();
+                DirEntry entry = item.Tag as DirEntry;
+                if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+                    return;
+                bool pinned = entry.IsDirectory && _session.IsPathPinned(entry.FullPath);
+                _ctxMenu.ShowForItem(_list, e.Location, entry, pinned);
                 return;
             }
-            ApplyShellMenuResult(shell);
-            return;
-        }
 
-        // Empty area — folder / This PC background menu.
-        string folder = _thisPc ? null : _currentPath;
-        ShellContextMenu.ShowResult bg = ShellContextMenu.ShowForBackground(Handle, folder, screen, extended);
-        if (bg.Shown)
-            ApplyShellMenuResult(bg);
-    }
-
-    private void ApplyShellMenuResult(ShellContextMenu.ShowResult result)
-    {
-        if (result == null)
-            return;
-        if (result.PinRequested)
-        {
-            DirEntry entry = SelectedEntry();
-            if (entry != null && entry.IsDirectory && !string.IsNullOrEmpty(entry.FullPath))
-            {
-                if (_session.PinFolderPath(entry.FullPath))
-                    _status.Text = "Pinned " + entry.Name;
-                else
-                    _status.Text = "Could not pin";
-                SyncPinChrome();
-            }
-            return;
+            bool canPaste = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
+                && ShellClipboard.CanPaste();
+            _ctxMenu.ShowForBackground(_list, e.Location, _thisPc, _currentPath, canPaste);
         }
-        if (result.UnpinRequested)
+        catch (Exception ex)
         {
-            DirEntry entry = SelectedEntry();
-            if (entry != null && !string.IsNullOrEmpty(entry.FullPath))
-            {
-                _session.OnUnpinPath(entry.FullPath);
-                _status.Text = "Unpinned";
-                SyncPinChrome();
-            }
-            return;
+            Program.LogCrash(ex);
+            SetActionStatus("Menu failed: " + ex.Message);
         }
-        if (result.NeedsRefresh)
-            ReloadCurrentListing();
     }
 
     private void ReloadCurrentListing()
@@ -2323,7 +2271,7 @@ internal sealed class BrowseForm : Form
         if (answer != DialogResult.Yes)
             return;
 
-        if (ShellContextMenu.SendToRecycleBin(Handle, entry.FullPath))
+        if (ShellFileOps.SendToRecycleBin(Handle, entry.FullPath))
         {
             SetActionStatus("Moved to Recycle Bin: " + entry.Name);
             ReloadCurrentListing();
@@ -2348,5 +2296,67 @@ internal sealed class BrowseForm : Form
         {
             _status.Text = ex.Message;
         }
+    }
+
+    private void RenameSelected()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        if (_thisPc && entry.IsDirectory && entry.FullPath.Length <= 3)
+        {
+            SetActionStatus("Drive letters cannot be renamed here");
+            return;
+        }
+
+        string newName = NamePromptForm.Ask(this, "Rename", "New name:", entry.Name);
+        if (string.IsNullOrEmpty(newName) || string.Equals(newName, entry.Name, StringComparison.Ordinal))
+            return;
+
+        string error;
+        string dest = ShellFileOps.Rename(entry.FullPath, newName, out error);
+        if (dest == null)
+        {
+            SetActionStatus("Rename failed: " + (error ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Renamed to " + Path.GetFileName(dest));
+        ReloadCurrentListing();
+        SelectPathInList(dest);
+    }
+
+    private void SelectPathInList(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return;
+        foreach (ListViewItem item in _list.Items)
+        {
+            DirEntry e = item.Tag as DirEntry;
+            if (e == null || string.IsNullOrEmpty(e.FullPath))
+                continue;
+            if (!string.Equals(e.FullPath, path, StringComparison.OrdinalIgnoreCase))
+                continue;
+            item.Selected = true;
+            item.Focused = true;
+            item.EnsureVisible();
+            return;
+        }
+    }
+
+    private void ShowSelectedProperties()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        if (!ShellFileOps.ShowProperties(Handle, entry.FullPath))
+            SetActionStatus("Could not open Properties");
+    }
+
+    private void ShowFolderProperties()
+    {
+        if (_thisPc || string.IsNullOrEmpty(_currentPath))
+            return;
+        if (!ShellFileOps.ShowProperties(Handle, _currentPath))
+            SetActionStatus("Could not open Properties");
     }
 }

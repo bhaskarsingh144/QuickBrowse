@@ -13,12 +13,12 @@ Not a teardown of every Explorer feature. Focus: where a **left-edge companion**
 ## Where Explorer still wins (do not fight early)
 
 - Full shell namespace (Control Panel, network neighborhood quirks)
-- Compact Fluent context-menu chrome (QB hosts the classic/full shell menu — same verbs as “Show more options”)
+- Shell `IContextMenu` / third-party shell verbs (QB uses managed dark menus; Open in Explorer for the rest)
 - Preview handlers, complex multi-select + drag to arbitrary targets
 - Search indexed query UI
 - Default file manager replacement / set-as-default politics
 
-**Shipped:** item + background `IContextMenu` hosting (Open with, Properties, per-type / third-party verbs). See [`TEST-CONTEXT.md`](TEST-CONTEXT.md).
+**Shipped:** managed item + background context menus (Open, Pin, Cut/Copy/Paste, Rename, Delete→Recycle, Properties). See [`TEST-CONTEXT.md`](TEST-CONTEXT.md).
 
 **Escape hatch:** “Open in Explorer” keeps power users unblocked.
 
