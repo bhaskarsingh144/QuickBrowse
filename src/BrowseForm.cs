@@ -31,9 +31,7 @@ internal sealed class BrowseForm : Form
     private readonly ChromeToolButton _deleteBtn;
     private readonly ChromeToolButton _explorerBtn;
     private readonly ChromeToolButton _pinBtn;
-    private readonly ChromeToolButton _tilesBtn;
-    private readonly ChromeToolButton _contentBtn;
-    private readonly ChromeToolButton _detailsBtn;
+    private readonly ChromeToolButton _viewBtn;
     private readonly ChromeToolButton _closeBtn;
     private readonly Label _status;
     private readonly ListView _list;
@@ -58,6 +56,7 @@ internal sealed class BrowseForm : Form
     private int _sortColumn;
     private bool _sortAsc = true;
     private int _hotIndex = -1;
+    private ViewMenuForm _viewMenu;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -141,17 +140,10 @@ internal sealed class BrowseForm : Form
         _pinBtn.Click += delegate { TogglePinCurrent(); };
         _tips.SetToolTip(_pinBtn, "Pin folder");
 
-        _tilesBtn = MakeIconTool();
-        _tilesBtn.Click += delegate { SetViewMode(BrowseViewMode.Tiles); };
-        _tips.SetToolTip(_tilesBtn, "Tiles");
-
-        _contentBtn = MakeIconTool();
-        _contentBtn.Click += delegate { SetViewMode(BrowseViewMode.Content); };
-        _tips.SetToolTip(_contentBtn, "Content");
-
-        _detailsBtn = MakeIconTool();
-        _detailsBtn.Click += delegate { SetViewMode(BrowseViewMode.Details); };
-        _tips.SetToolTip(_detailsBtn, "Details");
+        _viewBtn = MakeIconTool();
+        _viewBtn.ShowChevron = true;
+        _viewBtn.Click += delegate { ToggleViewMenu(); };
+        _tips.SetToolTip(_viewBtn, "View");
 
         _closeBtn = MakeIconTool();
         _closeBtn.Click += delegate { _session.ClosePane(); };
@@ -210,9 +202,7 @@ internal sealed class BrowseForm : Form
         _menu.Items.Add("Show in Explorer", null, delegate { ShowSelectedInExplorer(); });
 
         _chrome.Controls.Add(_closeBtn);
-        _chrome.Controls.Add(_detailsBtn);
-        _chrome.Controls.Add(_contentBtn);
-        _chrome.Controls.Add(_tilesBtn);
+        _chrome.Controls.Add(_viewBtn);
         _chrome.Controls.Add(_pinBtn);
         _chrome.Controls.Add(_explorerBtn);
         _chrome.Controls.Add(_deleteBtn);
@@ -260,6 +250,7 @@ internal sealed class BrowseForm : Form
 
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
+        CloseViewMenu();
         if (_uiFont != null) { _uiFont.Dispose(); _uiFont = null; }
         if (_tileFont != null) { _tileFont.Dispose(); _tileFont = null; }
         if (_metaFont != null) { _metaFont.Dispose(); _metaFont = null; }
@@ -440,7 +431,7 @@ internal sealed class BrowseForm : Form
         int group = Px(16);
         int btnH = Px(ChromeLayout.PaneChromeBtnDip);
         int btnW = Px(ChromeLayout.PaneChromeBtnWidthDip);
-        int viewW = Px(ChromeLayout.PaneViewBtnWidthDip);
+        int viewW = Px(ChromeLayout.PaneViewDropWidthDip);
         int pathH = Px(ChromeLayout.PanePathHeightDip);
         int rowGap = Px(10);
         int topPad = Math.Max(Px(8), (chromeH - (btnH * 2 + rowGap)) / 2);
@@ -474,12 +465,8 @@ internal sealed class BrowseForm : Form
         _explorerBtn.SetBounds(_deleteBtn.Right + gap, y2, btnW, btnH);
         _pinBtn.SetBounds(_explorerBtn.Right + gap, y2, btnW, btnH);
 
-        int viewGap = Px(4);
-        int viewTotal = viewW * 3 + viewGap * 2;
-        int viewLeft = Width - edge - viewTotal;
-        _tilesBtn.SetBounds(viewLeft, y2, viewW, btnH);
-        _contentBtn.SetBounds(_tilesBtn.Right + viewGap, y2, viewW, btnH);
-        _detailsBtn.SetBounds(_contentBtn.Right + viewGap, y2, viewW, btnH);
+        int viewLeft = Width - edge - viewW;
+        _viewBtn.SetBounds(viewLeft, y2, viewW, btnH);
 
         _pathHost.Invalidate();
     }
@@ -500,10 +487,18 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_deleteBtn, ChromeIcons.Delete(s));
         AssignGlyph(_explorerBtn, ChromeIcons.Explorer(s));
         AssignGlyph(_pinBtn, ChromeIcons.Pin(s));
-        AssignGlyph(_tilesBtn, ChromeIcons.TilesView(s));
-        AssignGlyph(_contentBtn, ChromeIcons.ContentView(s));
-        AssignGlyph(_detailsBtn, ChromeIcons.DetailsView(s));
+        AssignGlyph(_viewBtn, ViewModeGlyph(s));
         AssignGlyph(_closeBtn, ChromeIcons.Close(s));
+    }
+
+    private Image ViewModeGlyph(int size)
+    {
+        switch (_viewMode)
+        {
+            case BrowseViewMode.Content: return ChromeIcons.ContentView(size);
+            case BrowseViewMode.Details: return ChromeIcons.DetailsView(size);
+            default: return ChromeIcons.TilesView(size);
+        }
     }
 
     private void AssignGlyph(ChromeToolButton btn, Image glyph)
@@ -521,9 +516,7 @@ internal sealed class BrowseForm : Form
         _deleteBtn.Glyph = null;
         _explorerBtn.Glyph = null;
         _pinBtn.Glyph = null;
-        _tilesBtn.Glyph = null;
-        _contentBtn.Glyph = null;
-        _detailsBtn.Glyph = null;
+        _viewBtn.Glyph = null;
         _closeBtn.Glyph = null;
         for (int i = 0; i < _glyphOwned.Count; i++)
         {
@@ -613,6 +606,7 @@ internal sealed class BrowseForm : Form
         int tileIcon = Px(UsesContentIcon() ? ChromeLayout.ContentIconDip : ChromeLayout.TileIconDip);
         _largeImages.ImageSize = new Size(tileIcon, tileIcon);
         ApplyViewMode();
+        ApplyViewGlyphOnly();
         SyncViewButtons();
         RebuildItemsFromCache();
     }
@@ -642,9 +636,68 @@ internal sealed class BrowseForm : Form
 
     private void SyncViewButtons()
     {
-        _tilesBtn.Selected = _viewMode == BrowseViewMode.Tiles;
-        _contentBtn.Selected = _viewMode == BrowseViewMode.Content;
-        _detailsBtn.Selected = _viewMode == BrowseViewMode.Details;
+        bool menuOpen = _viewMenu != null && !_viewMenu.IsDisposed && _viewMenu.Visible;
+        _viewBtn.Selected = menuOpen;
+    }
+
+    private void ApplyViewGlyphOnly()
+    {
+        Image old = _viewBtn.Glyph;
+        int s = Math.Max(20, Px(ChromeLayout.PaneChromeIconDip));
+        Image glyph = ViewModeGlyph(s);
+        _viewBtn.Glyph = glyph;
+        if (old != null)
+        {
+            _glyphOwned.Remove(old);
+            try { old.Dispose(); }
+            catch { }
+        }
+        _glyphOwned.Add(glyph);
+        string tip = "View";
+        switch (_viewMode)
+        {
+            case BrowseViewMode.Content: tip = "View: Content"; break;
+            case BrowseViewMode.Details: tip = "View: Details"; break;
+            default: tip = "View: Tiles"; break;
+        }
+        _tips.SetToolTip(_viewBtn, tip);
+    }
+
+    private void ToggleViewMenu()
+    {
+        _session.NoteActivity();
+        if (_viewMenu != null && !_viewMenu.IsDisposed && _viewMenu.Visible)
+        {
+            _viewMenu.Close();
+            return;
+        }
+        CloseViewMenu();
+        ViewMenuForm menu = new ViewMenuForm(_viewMode, _dpi, _fit);
+        _viewMenu = menu;
+        menu.ModeChosen += delegate(BrowseViewMode mode) { SetViewMode(mode); };
+        menu.FormClosed += delegate
+        {
+            if (ReferenceEquals(_viewMenu, menu))
+                _viewMenu = null;
+            if (!_viewBtn.IsDisposed)
+                _viewBtn.Selected = false;
+        };
+        menu.PlaceBelow(_viewBtn);
+        menu.Show(this);
+        if (menu.IsHandleCreated)
+            ShellChrome.ZOrder(menu.Handle, true);
+        _viewBtn.Selected = true;
+    }
+
+    private void CloseViewMenu()
+    {
+        if (_viewMenu == null || _viewMenu.IsDisposed)
+        {
+            _viewMenu = null;
+            return;
+        }
+        _viewMenu.Close();
+        _viewMenu = null;
     }
 
     private void SyncNavButtons()

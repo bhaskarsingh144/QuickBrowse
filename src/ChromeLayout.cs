@@ -51,6 +51,9 @@ internal static class ChromeLayout
     public const int PaneChromeIconDip = 26;
     public const int PanePathHeightDip = 24;
     public const int PaneViewBtnWidthDip = 40;
+    /// <summary>Single view-mode dropdown trigger (glyph + chevron).</summary>
+    public const int PaneViewDropWidthDip = 56;
+    public const int ViewMenuWidthDip = 168;
 
     // Larger icon cells with room for 2-line labels.
     public const int TileIconDip = 68;

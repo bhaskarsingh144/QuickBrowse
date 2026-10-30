@@ -15,7 +15,7 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] Single-click folder enters; single-click file opens with shell
 - [ ] Right-click item → shell menu (Open with / Properties / type verbs); empty area → background menu
 - [ ] Back / Up / path bar (Enter) / Copy / Del (Recycle Bin) / Explorer / Pin / view modes / ×; Esc / re-tap; Enter / Alt+Up / Delete key
-- [ ] Tiles / Content / Details; preference survives restart
+- [ ] View dropdown: Tiles / Content / Details; preference survives restart
 - [ ] Access-denied / empty folder show status text
 - [ ] Tray → Show / Exit
 - [ ] Idle ~30s without activity closes pane (+ flyout if open)
