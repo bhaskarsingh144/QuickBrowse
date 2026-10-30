@@ -32,12 +32,18 @@ internal static class ChromeVisual
 
     public static void ApplyRoundedRegion(Form form, int radiusPx)
     {
-        if (form == null || form.Width < 4 || form.Height < 4)
+        ApplyRoundedRegion((Control)form, radiusPx);
+    }
+
+    /// <summary>Clip a control to a pill/rounded rect so square BackColor corners cannot bleed.</summary>
+    public static void ApplyRoundedRegion(Control control, int radiusPx)
+    {
+        if (control == null || control.Width < 4 || control.Height < 4)
             return;
-        using (GraphicsPath path = Round(new Rectangle(0, 0, form.Width, form.Height), radiusPx))
+        using (GraphicsPath path = Round(new Rectangle(0, 0, control.Width, control.Height), radiusPx))
         {
-            Region old = form.Region;
-            form.Region = new Region(path);
+            Region old = control.Region;
+            control.Region = new Region(path);
             if (old != null)
                 old.Dispose();
         }
