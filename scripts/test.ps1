@@ -64,6 +64,11 @@ Run-Suite "DirectoryModelTests" @(
     (Join-Path $testsDir "DirectoryModelTests.cs")
 ) "DirectoryModelTests.exe" $core
 
+Run-Suite "PathCrumbsTests" @(
+    (Join-Path $srcDir "PathCrumbs.cs"),
+    (Join-Path $testsDir "PathCrumbsTests.cs")
+) "PathCrumbsTests.exe" $drawing
+
 Run-Suite "PlacesCatalogTests" @(
     (Join-Path $srcDir "PlacesCatalog.cs"),
     (Join-Path $testsDir "PlacesCatalogTests.cs")
