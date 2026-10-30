@@ -59,6 +59,7 @@ internal sealed class BrowseForm : Form
     private bool _suppressPathEnter;
     private int _sortColumn;
     private bool _sortAsc = true;
+    private int _hotIndex = -1;
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -203,7 +204,8 @@ internal sealed class BrowseForm : Form
         _list.DrawColumnHeader += OnListDrawColumnHeader;
         _list.ColumnClick += OnColumnClick;
         _list.MouseClick += OnListMouseClick;
-        _list.MouseMove += delegate { _session.NoteActivity(); };
+        _list.MouseMove += OnListMouseMove;
+        _list.MouseLeave += OnListMouseLeave;
         _list.KeyDown += OnListKeyDown;
         _list.MouseUp += OnListMouseUp;
         _list.SelectedIndexChanged += delegate { SyncActionButtons(); };
@@ -528,12 +530,7 @@ internal sealed class BrowseForm : Form
 
     private void DisposeGlyphs()
     {
-        for (int i = 0; i < _glyphOwned.Count; i++)
-        {
-            try { _glyphOwned[i].Dispose(); }
-            catch { }
-        }
-        _glyphOwned.Clear();
+        // Detach from buttons first so a queued paint cannot touch disposed bitmaps.
         _backBtn.Glyph = null;
         _upBtn.Glyph = null;
         _pathCopyBtn.Glyph = null;
@@ -546,6 +543,12 @@ internal sealed class BrowseForm : Form
         _listBtn.Glyph = null;
         _detailsBtn.Glyph = null;
         _closeBtn.Glyph = null;
+        for (int i = 0; i < _glyphOwned.Count; i++)
+        {
+            try { _glyphOwned[i].Dispose(); }
+            catch { }
+        }
+        _glyphOwned.Clear();
     }
 
     private bool UsesContentIcon()
@@ -871,11 +874,7 @@ internal sealed class BrowseForm : Form
     {
         int gen = Interlocked.Increment(ref _loadGen);
         _status.Text = "Loading…";
-        _list.BeginUpdate();
-        _list.Items.Clear();
-        _list.EndUpdate();
-        _smallImages.Images.Clear();
-        _largeImages.Images.Clear();
+        ClearListAndImages();
         _entries.Clear();
         SyncActionButtons();
 
@@ -930,12 +929,25 @@ internal sealed class BrowseForm : Form
         });
     }
 
-    private void RebuildItemsFromCache()
+    private void ClearListAndImages()
     {
+        _hotIndex = -1;
         _list.BeginUpdate();
+        // Detach imagelists before Clear so a paint cannot touch disposed bitmaps.
+        _list.SmallImageList = null;
+        _list.LargeImageList = null;
         _list.Items.Clear();
         _smallImages.Images.Clear();
         _largeImages.Images.Clear();
+        _list.SmallImageList = _smallImages;
+        _list.LargeImageList = _largeImages;
+        _list.EndUpdate();
+    }
+
+    private void RebuildItemsFromCache()
+    {
+        ClearListAndImages();
+        _list.BeginUpdate();
 
         bool useLarge = UsesLargeGrid() || _viewMode == BrowseViewMode.Content || _viewMode == BrowseViewMode.Tiles;
         Size smallSz = _smallImages.ImageSize;
@@ -979,6 +991,60 @@ internal sealed class BrowseForm : Form
         _list.EndUpdate();
         ApplyTileMetrics();
         LayoutDetailColumns();
+    }
+
+    /// <summary>
+    /// Full cell hit-test — WinForms GetItemAt often misses padding around icon/label.
+    /// </summary>
+    private ListViewItem FindItemAtPoint(Point clientPt)
+    {
+        for (int i = 0; i < _list.Items.Count; i++)
+        {
+            ListViewItem item = _list.Items[i];
+            if (item.Bounds.Contains(clientPt))
+                return item;
+        }
+        return _list.GetItemAt(clientPt.X, clientPt.Y);
+    }
+
+    private bool IsHotItem(ListViewItem item)
+    {
+        return item != null && item.Index == _hotIndex;
+    }
+
+    private void SetHotIndex(int index)
+    {
+        if (_hotIndex == index)
+            return;
+        int old = _hotIndex;
+        _hotIndex = index;
+        InvalidateItemIndex(old);
+        InvalidateItemIndex(_hotIndex);
+    }
+
+    private void InvalidateItemIndex(int index)
+    {
+        if (index < 0 || index >= _list.Items.Count)
+            return;
+        try
+        {
+            _list.Invalidate(_list.Items[index].Bounds);
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnListMouseMove(object sender, MouseEventArgs e)
+    {
+        _session.NoteActivity();
+        ListViewItem item = FindItemAtPoint(e.Location);
+        SetHotIndex(item != null ? item.Index : -1);
+    }
+
+    private void OnListMouseLeave(object sender, EventArgs e)
+    {
+        SetHotIndex(-1);
     }
 
     private static string BuildItemTip(DirEntry entry)
@@ -1085,7 +1151,8 @@ internal sealed class BrowseForm : Form
         Graphics g = e.Graphics;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         bool selected = e.Item.Selected;
-        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : UiTheme.Bg))
+        bool hot = !selected && IsHotItem(e.Item);
+        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : (hot ? UiTheme.Hover : UiTheme.Bg)))
             g.FillRectangle(bg, e.Bounds);
 
         Image img = null;
@@ -1117,7 +1184,7 @@ internal sealed class BrowseForm : Form
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
         bool selected = e.Item.Selected;
-        bool hot = (e.State & ListViewItemStates.Hot) != 0;
+        bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
         if (selected || hot)
             ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
         else
@@ -1172,7 +1239,7 @@ internal sealed class BrowseForm : Form
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
         bool selected = e.Item.Selected;
-        bool hot = (e.State & ListViewItemStates.Hot) != 0;
+        bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
         if (selected || hot)
             ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
         else
@@ -1220,7 +1287,7 @@ internal sealed class BrowseForm : Form
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
         bool selected = e.Item.Selected;
-        bool hot = (e.State & ListViewItemStates.Hot) != 0;
+        bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
         if (selected || hot)
             ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
         else
@@ -1272,10 +1339,19 @@ internal sealed class BrowseForm : Form
     {
         if (item == null)
             return null;
-        if (!string.IsNullOrEmpty(item.ImageKey) && _largeImages.Images.ContainsKey(item.ImageKey))
-            return _largeImages.Images[item.ImageKey];
-        if (item.ImageIndex >= 0 && item.ImageIndex < _largeImages.Images.Count)
-            return _largeImages.Images[item.ImageIndex];
+        try
+        {
+            if (!string.IsNullOrEmpty(item.ImageKey) && _largeImages.Images.ContainsKey(item.ImageKey))
+                return _largeImages.Images[item.ImageKey];
+            if (item.ImageIndex >= 0 && item.ImageIndex < _largeImages.Images.Count)
+                return _largeImages.Images[item.ImageIndex];
+        }
+        catch (ArgumentException)
+        {
+        }
+        catch (ObjectDisposedException)
+        {
+        }
         return null;
     }
 
@@ -1290,7 +1366,8 @@ internal sealed class BrowseForm : Form
         Graphics g = e.Graphics;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         bool selected = e.Item.Selected;
-        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : UiTheme.Bg))
+        bool hot = !selected && IsHotItem(e.Item);
+        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : (hot ? UiTheme.Hover : UiTheme.Bg)))
             g.FillRectangle(bg, e.Bounds);
 
         Image img = null;
@@ -1322,7 +1399,7 @@ internal sealed class BrowseForm : Form
         _session.NoteActivity();
         if (e.Button != MouseButtons.Left)
             return;
-        ListViewItem item = _list.GetItemAt(e.X, e.Y);
+        ListViewItem item = FindItemAtPoint(e.Location);
         if (item == null)
             return;
         _list.SelectedItems.Clear();
@@ -1338,7 +1415,7 @@ internal sealed class BrowseForm : Form
 
         Point screen = _list.PointToScreen(e.Location);
         bool extended = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        ListViewItem item = _list.GetItemAt(e.X, e.Y);
+        ListViewItem item = FindItemAtPoint(e.Location);
 
         if (item != null)
         {
@@ -1448,18 +1525,19 @@ internal sealed class BrowseForm : Form
     {
         if (entry == null)
             return;
-        if (entry.IsDirectory)
-        {
-            NavigateTo(entry.FullPath, entry.Name);
-            return;
-        }
         try
         {
+            if (entry.IsDirectory)
+            {
+                NavigateTo(entry.FullPath, entry.Name);
+                return;
+            }
             Process.Start(new ProcessStartInfo(entry.FullPath) { UseShellExecute = true });
             _session.NotifyRecentAccess(entry.FullPath);
         }
         catch (Exception ex)
         {
+            Program.LogCrash(ex);
             _status.Text = "Could not open: " + ex.Message;
         }
     }

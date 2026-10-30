@@ -115,17 +115,26 @@ internal sealed class ChromeToolButton : Button
 
         if (_glyph != null)
         {
-            int gw = _glyph.Width;
-            int gh = _glyph.Height;
-            int x = (Width - gw) / 2;
-            int y = (Height - gh) / 2;
-            // Never dispose _glyph here — disabled Back/Up used to `using` it and then
-            // painted a red-X placeholder on the next frame.
-            g.DrawImage(_glyph, x, y, gw, gh);
-            if (!Enabled)
+            // Glyphs can be swapped/disposed on remasure while a paint is queued —
+            // never let a dead Image take down the chrome.
+            try
             {
-                using (SolidBrush dim = new SolidBrush(Color.FromArgb(140, Parent != null ? Parent.BackColor : UiTheme.Surface)))
-                    g.FillRectangle(dim, x, y, gw, gh);
+                int gw = _glyph.Width;
+                int gh = _glyph.Height;
+                int x = (Width - gw) / 2;
+                int y = (Height - gh) / 2;
+                g.DrawImage(_glyph, x, y, gw, gh);
+                if (!Enabled)
+                {
+                    using (SolidBrush dim = new SolidBrush(Color.FromArgb(140, Parent != null ? Parent.BackColor : UiTheme.Surface)))
+                        g.FillRectangle(dim, x, y, gw, gh);
+                }
+            }
+            catch (ArgumentException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
             }
             return;
         }
