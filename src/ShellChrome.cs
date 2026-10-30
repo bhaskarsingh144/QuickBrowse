@@ -94,6 +94,32 @@ internal static class ShellChrome
         SetWindowPos(hwnd, after, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     }
 
+    /// <summary>
+    /// Native WinForms / ListView tooltips use tooltips_class32 and sit behind our
+    /// topmost chrome. Elevate this process's tooltip HWNDs into the topmost band.
+    /// </summary>
+    internal static void ElevateProcessToolTips()
+    {
+        try
+        {
+            int self = Process.GetCurrentProcess().Id;
+            IntPtr hwnd = IntPtr.Zero;
+            while (true)
+            {
+                hwnd = FindWindowEx(IntPtr.Zero, hwnd, "tooltips_class32", null);
+                if (hwnd == IntPtr.Zero)
+                    break;
+                uint pid;
+                GetWindowThreadProcessId(hwnd, out pid);
+                if ((int)pid == self)
+                    ZOrder(hwnd, true);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     internal static bool SwallowMinimize(ref Message m)
     {
         const int WM_SYSCOMMAND = 0x0112;
@@ -515,6 +541,9 @@ internal static class ShellChrome
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string lpszWindow);
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);

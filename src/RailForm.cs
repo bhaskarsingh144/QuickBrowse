@@ -49,6 +49,10 @@ internal sealed class RailForm : Form
         AutoScaleMode = AutoScaleMode.None;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
         _tip = new ToolTip();
+        _tip.Popup += delegate
+        {
+            BeginInvoke(new MethodInvoker(ShellChrome.ElevateProcessToolTips));
+        };
         _cell = ChromeLayout.MeasureRailCell(96f, 1f, null);
     }
 
