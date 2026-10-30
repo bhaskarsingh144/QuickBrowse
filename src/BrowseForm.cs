@@ -53,10 +53,15 @@ internal sealed class BrowseForm : Form
     private Font _metaFont;
     private BrowseViewMode _viewMode = BrowseViewMode.Tiles;
     private bool _suppressPathEnter;
+    private bool _pathEditing;
     private int _sortColumn;
     private bool _sortAsc = true;
     private int _hotIndex = -1;
+    private int _crumbHot = -1;
     private ViewMenuForm _viewMenu;
+    private readonly List<PathCrumbSeg> _crumbSource = new List<PathCrumbSeg>();
+    private readonly List<PathCrumbSeg> _crumbs = new List<PathCrumbSeg>();
+    private readonly List<Rectangle> _crumbHits = new List<Rectangle>();
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
@@ -102,21 +107,26 @@ internal sealed class BrowseForm : Form
         _pathHost = new Panel();
         _pathHost.BackColor = UiTheme.Raised;
         _pathHost.Paint += PaintPathHost;
+        _pathHost.MouseMove += OnPathHostMouseMove;
+        _pathHost.MouseLeave += OnPathHostMouseLeave;
+        _pathHost.MouseClick += OnPathHostMouseClick;
+        _pathHost.Cursor = Cursors.IBeam;
 
         _pathBox = new TextBox();
         _pathBox.BorderStyle = BorderStyle.None;
         _pathBox.BackColor = UiTheme.Raised;
         _pathBox.ForeColor = UiTheme.Text;
         _pathBox.TabStop = true;
+        _pathBox.Visible = false;
         _pathBox.KeyDown += OnPathKeyDown;
         _pathBox.Enter += delegate { _session.NoteActivity(); _pathHost.Invalidate(); };
-        _pathBox.Leave += delegate { _pathHost.Invalidate(); };
+        _pathBox.Leave += OnPathBoxLeave;
         _pathBox.MouseDown += delegate { _session.NoteActivity(); };
         _pathBox.GotFocus += delegate
         {
             BeginInvoke(new Action(delegate
             {
-                if (!_pathBox.IsDisposed)
+                if (!_pathBox.IsDisposed && _pathEditing)
                     _pathBox.SelectAll();
             }));
         };
@@ -300,6 +310,7 @@ internal sealed class BrowseForm : Form
         _menu.Font = _uiFont;
 
         ApplyGlyphs();
+        RebuildCrumbs();
         LayoutChromeButtons(chromeH);
         _smallImages.ImageSize = new Size(Px(22), Px(22));
         int tileIcon = Px(UsesContentIcon() ? ChromeLayout.ContentIconDip : ChromeLayout.TileIconDip);
@@ -347,7 +358,17 @@ internal sealed class BrowseForm : Form
         _session.NoteActivity();
         if (keyData == Keys.Escape)
         {
+            if (_pathEditing)
+            {
+                CancelPathEdit();
+                return true;
+            }
             _session.ClosePane();
+            return true;
+        }
+        if (keyData == (Keys.Control | Keys.L) || keyData == Keys.F4)
+        {
+            BeginPathEdit();
             return true;
         }
         if (keyData == (Keys.Alt | Keys.Up))
@@ -365,7 +386,7 @@ internal sealed class BrowseForm : Form
             ActivateSelected();
             return true;
         }
-        if (keyData == Keys.Delete)
+        if (keyData == Keys.Delete && !_pathEditing)
         {
             DeleteSelected();
             return true;
@@ -398,14 +419,44 @@ internal sealed class BrowseForm : Form
     {
         Graphics g = e.Graphics;
         g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         Rectangle r = new Rectangle(0, 0, _pathHost.Width - 1, _pathHost.Height - 1);
         int radius = Math.Max(4, _pathHost.Height / 2);
         using (var path = ChromeVisual.Round(r, radius))
         using (SolidBrush brush = new SolidBrush(UiTheme.Raised))
             g.FillPath(brush, path);
         using (var path = ChromeVisual.Round(r, radius))
-        using (Pen pen = new Pen(_pathBox.Focused ? UiTheme.Accent : UiTheme.BorderSoft))
+        using (Pen pen = new Pen(_pathEditing && _pathBox.Focused ? UiTheme.Accent : UiTheme.BorderSoft))
             g.DrawPath(pen, path);
+
+        if (_pathEditing)
+            return;
+
+        LayoutCrumbHits();
+        Font font = _uiFont ?? Font;
+        int sepW = PathCrumbs.TextWidth(font, " › ");
+        for (int i = 0; i < _crumbs.Count && i < _crumbHits.Count; i++)
+        {
+            PathCrumbSeg seg = _crumbs[i];
+            Rectangle hit = _crumbHits[i];
+            bool hot = i == _crumbHot && !seg.IsEllipsis;
+            if (hot)
+                ChromeVisual.FillRound(g, hit, Math.Max(3, hit.Height / 3), UiTheme.Hover);
+            Color ink = hot ? UiTheme.Accent : (i == _crumbs.Count - 1 ? UiTheme.Text : UiTheme.TextSecondary);
+            TextRenderer.DrawText(
+                g,
+                seg.Label ?? "",
+                font,
+                hit,
+                ink,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
+            if (i < _crumbs.Count - 1)
+            {
+                Rectangle sep = new Rectangle(hit.Right, 0, sepW, _pathHost.Height);
+                TextRenderer.DrawText(g, " › ", font, sep, UiTheme.Muted,
+                    TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            }
+        }
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -460,7 +511,17 @@ internal sealed class BrowseForm : Form
         int pathBoxRight = _pathCopyBtn.Left - Px(6);
         int pathBoxH = Math.Min(_pathBox.PreferredHeight + Px(2), Math.Max(Px(16), pathH - Px(8)));
         int pathBoxY = Math.Max(1, (pathH - pathBoxH) / 2);
-        _pathBox.SetBounds(pathBoxLeft, pathBoxY, Math.Max(40, pathBoxRight - pathBoxLeft), pathBoxH);
+        if (_pathEditing)
+        {
+            _pathBox.Visible = true;
+            _pathBox.SetBounds(pathBoxLeft, pathBoxY, Math.Max(40, pathBoxRight - pathBoxLeft), pathBoxH);
+        }
+        else
+        {
+            _pathBox.Visible = false;
+            _pathBox.SetBounds(pathBoxLeft, pathBoxY, Math.Max(40, pathBoxRight - pathBoxLeft), pathBoxH);
+            LayoutCrumbHits();
+        }
 
         // Organize cluster (left) + view segment (right), same baseline.
         _deleteBtn.SetBounds(edge, y2, btnW, btnH);
@@ -836,17 +897,200 @@ internal sealed class BrowseForm : Form
         {
             _suppressPathEnter = false;
         }
+        RebuildCrumbs();
+        if (_pathEditing)
+            EndPathEdit(false);
         _pathHost.Invalidate();
+    }
+
+    private void RebuildCrumbs()
+    {
+        _crumbSource.Clear();
+        _crumbSource.AddRange(PathCrumbs.Build(_thisPc, _currentPath));
+        LayoutCrumbHits();
+    }
+
+    private void LayoutCrumbHits()
+    {
+        _crumbHits.Clear();
+        _crumbs.Clear();
+        if (_pathEditing || _uiFont == null || _pathHost.Width < 8)
+            return;
+        int inset = Px(8);
+        int copyReserve = _pathCopyBtn.Width + Px(14);
+        int maxW = Math.Max(40, _pathHost.Width - inset - copyReserve);
+        int sepW = PathCrumbs.TextWidth(_uiFont, " › ");
+        _crumbs.AddRange(PathCrumbs.Fit(_crumbSource, _uiFont, maxW, sepW, 0));
+        int x = inset;
+        int h = Math.Max(Px(18), _pathHost.Height - Px(8));
+        int y = Math.Max(1, (_pathHost.Height - h) / 2);
+        for (int i = 0; i < _crumbs.Count; i++)
+        {
+            int tw = PathCrumbs.TextWidth(_uiFont, _crumbs[i].Label ?? "");
+            Rectangle hit = new Rectangle(x, y, Math.Max(8, tw + Px(6)), h);
+            _crumbHits.Add(hit);
+            x += tw + Px(6) + sepW;
+        }
+    }
+
+    private void BeginPathEdit()
+    {
+        if (_pathEditing)
+        {
+            if (!_pathBox.Focused)
+                _pathBox.Focus();
+            return;
+        }
+        _pathEditing = true;
+        _crumbHot = -1;
+        string text = _thisPc ? "This PC" : (_currentPath ?? "");
+        _suppressPathEnter = true;
+        try { _pathBox.Text = text; }
+        finally { _suppressPathEnter = false; }
+        LayoutChromeButtons(_chrome.Height);
+        _pathBox.Visible = true;
+        _pathBox.BringToFront();
+        _pathCopyBtn.BringToFront();
+        _pathBox.Focus();
+        _pathBox.SelectAll();
+        _pathHost.Invalidate();
+    }
+
+    private void CancelPathEdit()
+    {
+        EndPathEdit(true);
+    }
+
+    private void EndPathEdit(bool restore)
+    {
+        if (!_pathEditing)
+            return;
+        _pathEditing = false;
+        if (restore)
+        {
+            _suppressPathEnter = true;
+            try { _pathBox.Text = _thisPc ? "This PC" : (_currentPath ?? ""); }
+            finally { _suppressPathEnter = false; }
+        }
+        if (_pathBox.Focused)
+            _list.Focus();
+        _pathBox.Visible = false;
+        RebuildCrumbs();
+        LayoutChromeButtons(_chrome.Height);
+        _pathHost.Invalidate();
+    }
+
+    private void OnPathBoxLeave(object sender, EventArgs e)
+    {
+        _pathHost.Invalidate();
+        if (!_pathEditing)
+            return;
+        // Defer so a crumb click / copy click can run first.
+        BeginInvoke(new Action(delegate
+        {
+            if (IsDisposed || !_pathEditing)
+                return;
+            if (_pathCopyBtn.Focused || _pathBox.Focused)
+                return;
+            CancelPathEdit();
+        }));
+    }
+
+    private void OnPathHostMouseMove(object sender, MouseEventArgs e)
+    {
+        _session.NoteActivity();
+        if (_pathEditing)
+            return;
+        int next = -1;
+        for (int i = 0; i < _crumbHits.Count; i++)
+        {
+            if (_crumbHits[i].Contains(e.Location))
+            {
+                next = i;
+                break;
+            }
+        }
+        if (next == _crumbHot)
+            return;
+        _crumbHot = next;
+        _pathHost.Cursor = (next >= 0 && next < _crumbs.Count && !_crumbs[next].IsEllipsis)
+            ? Cursors.Hand
+            : Cursors.IBeam;
+        _pathHost.Invalidate();
+    }
+
+    private void OnPathHostMouseLeave(object sender, EventArgs e)
+    {
+        if (_crumbHot < 0)
+            return;
+        _crumbHot = -1;
+        _pathHost.Cursor = Cursors.IBeam;
+        _pathHost.Invalidate();
+    }
+
+    private void OnPathHostMouseClick(object sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || _pathEditing)
+            return;
+        _session.NoteActivity();
+        for (int i = 0; i < _crumbHits.Count && i < _crumbs.Count; i++)
+        {
+            if (!_crumbHits[i].Contains(e.Location))
+                continue;
+            PathCrumbSeg seg = _crumbs[i];
+            if (seg.IsEllipsis)
+                return;
+            NavigateCrumb(seg);
+            return;
+        }
+        BeginPathEdit();
+    }
+
+    private void NavigateCrumb(PathCrumbSeg seg)
+    {
+        if (seg == null)
+            return;
+        if (seg.IsThisPc)
+        {
+            if (_thisPc)
+                return;
+            GoToState(new NavState { ThisPc = true, Path = null, Title = "This PC" }, true, true);
+            return;
+        }
+        if (string.IsNullOrEmpty(seg.TargetPath))
+            return;
+        string full;
+        try { full = Path.GetFullPath(seg.TargetPath); }
+        catch { return; }
+        if (!Directory.Exists(full))
+            return;
+        if (!_thisPc && string.Equals(PinStore.Normalize(_currentPath), PinStore.Normalize(full), StringComparison.OrdinalIgnoreCase))
+            return;
+        string name = Path.GetFileName(full.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        GoToState(new NavState
+        {
+            ThisPc = false,
+            Path = full,
+            Title = string.IsNullOrEmpty(name) ? full : name
+        }, true, true);
     }
 
     private void OnPathKeyDown(object sender, KeyEventArgs e)
     {
         _session.NoteActivity();
+        if (e.KeyCode == Keys.Escape)
+        {
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            CancelPathEdit();
+            return;
+        }
         if (e.KeyCode != Keys.Enter || _suppressPathEnter)
             return;
         e.Handled = true;
         e.SuppressKeyPress = true;
         NavigateTypedPath();
+        EndPathEdit(false);
     }
 
     private void NavigateTypedPath()
