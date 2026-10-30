@@ -34,7 +34,9 @@ internal sealed class BrowseForm : Form
     private readonly Label _filterGlyph;
     private readonly ChromeToolButton _newFolderBtn;
     private readonly ChromeToolButton _refreshBtn;
-    private readonly ChromeToolButton _clipboardBtn;
+    private readonly ChromeToolButton _cutBtn;
+    private readonly ChromeToolButton _copyBtn;
+    private readonly ChromeToolButton _pasteBtn;
     private readonly ChromeToolButton _deleteBtn;
     private readonly ChromeToolButton _explorerBtn;
     private readonly ChromeToolButton _pinBtn;
@@ -73,7 +75,6 @@ internal sealed class BrowseForm : Form
     private int _hotIndex = -1;
     private int _crumbHot = -1;
     private ViewMenuForm _viewMenu;
-    private ClipboardMenuForm _clipboardMenu;
     private readonly List<PathCrumbSeg> _crumbSource = new List<PathCrumbSeg>();
     private readonly List<PathCrumbSeg> _crumbs = new List<PathCrumbSeg>();
     private readonly List<Rectangle> _crumbHits = new List<Rectangle>();
@@ -197,10 +198,17 @@ internal sealed class BrowseForm : Form
         _refreshBtn.Click += delegate { _session.NoteActivity(); ReloadCurrentListing(); };
         _tips.SetToolTip(_refreshBtn, "Refresh");
 
-        _clipboardBtn = MakeIconTool();
-        _clipboardBtn.ShowChevron = true;
-        _clipboardBtn.Click += delegate { ToggleClipboardMenu(); };
-        _tips.SetToolTip(_clipboardBtn, "Clipboard");
+        _cutBtn = MakeIconTool();
+        _cutBtn.Click += delegate { _session.NoteActivity(); ClipboardCopySelected(true); };
+        _tips.SetToolTip(_cutBtn, "Cut");
+
+        _copyBtn = MakeIconTool();
+        _copyBtn.Click += delegate { _session.NoteActivity(); ClipboardCopySelected(false); };
+        _tips.SetToolTip(_copyBtn, "Copy");
+
+        _pasteBtn = MakeIconTool();
+        _pasteBtn.Click += delegate { _session.NoteActivity(); ClipboardPaste(); };
+        _tips.SetToolTip(_pasteBtn, "Paste");
 
         _deleteBtn = MakeIconTool();
         _deleteBtn.Click += delegate { _session.NoteActivity(); DeleteSelected(); };
@@ -270,26 +278,32 @@ internal sealed class BrowseForm : Form
 
         _ctxMenu = new BrowseContextMenu();
         _ctxMenu.OpenRequested += delegate { ActivateSelected(); };
+        _ctxMenu.OpenWithRequested += delegate { OpenSelectedWith(); };
         _ctxMenu.PinToggleRequested += delegate { PinSelectedFolder(); };
         _ctxMenu.CutRequested += delegate { ClipboardCopySelected(true); };
         _ctxMenu.CopyRequested += delegate { ClipboardCopySelected(false); };
+        _ctxMenu.PasteRequested += delegate { ClipboardPaste(); };
         _ctxMenu.CopyPathRequested += delegate { CopySelectedPath(); };
         _ctxMenu.RenameRequested += delegate { RenameSelected(); };
         _ctxMenu.DeleteRequested += delegate { DeleteSelected(); };
         _ctxMenu.ExplorerRequested += delegate { ShowSelectedInExplorer(); };
         _ctxMenu.PropertiesRequested += delegate { ShowSelectedProperties(); };
         _ctxMenu.NewFolderRequested += delegate { CreateNewFolder(); };
-        _ctxMenu.PasteRequested += delegate { ClipboardPaste(); };
         _ctxMenu.RefreshRequested += delegate { ReloadCurrentListing(); };
         _ctxMenu.BackgroundExplorerRequested += delegate { OpenInExplorer(); };
         _ctxMenu.BackgroundPropertiesRequested += delegate { ShowFolderProperties(); };
+        _ctxMenu.CompressRequested += delegate { CompressSelected(); };
+        _ctxMenu.ExtractRequested += delegate { ExtractSelected(); };
+        _ctxMenu.SendToRequested += OnSendToRequested;
 
         _chrome.Controls.Add(_closeBtn);
         _chrome.Controls.Add(_viewBtn);
         _chrome.Controls.Add(_pinBtn);
         _chrome.Controls.Add(_explorerBtn);
         _chrome.Controls.Add(_deleteBtn);
-        _chrome.Controls.Add(_clipboardBtn);
+        _chrome.Controls.Add(_pasteBtn);
+        _chrome.Controls.Add(_copyBtn);
+        _chrome.Controls.Add(_cutBtn);
         _chrome.Controls.Add(_refreshBtn);
         _chrome.Controls.Add(_newFolderBtn);
         _chrome.Controls.Add(_filterHost);
@@ -338,7 +352,6 @@ internal sealed class BrowseForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         CloseViewMenu();
-        CloseClipboardMenu();
         if (_uiFont != null) { _uiFont.Dispose(); _uiFont = null; }
         if (_tileFont != null) { _tileFont.Dispose(); _tileFont = null; }
         if (_metaFont != null) { _metaFont.Dispose(); _metaFont = null; }
@@ -702,13 +715,14 @@ internal sealed class BrowseForm : Form
         LayoutFilterInner(pathBoxH, pathBoxY, inset, copySize);
 
         // Organize cluster (left) + view segment (right).
-        int clipW = Px(ChromeLayout.PaneViewDropWidthDip);
         int orgGap = gap;
         _newFolderBtn.SetBounds(edge, y2, btnW, btnH);
         _refreshBtn.SetBounds(_newFolderBtn.Right + orgGap, y2, btnW, btnH);
-        _clipboardBtn.SetBounds(_refreshBtn.Right + orgGap, y2, clipW, btnH);
-        _deleteBtn.SetBounds(_clipboardBtn.Right + group, y2, btnW, btnH);
-        _explorerBtn.SetBounds(_deleteBtn.Right + orgGap, y2, btnW, btnH);
+        _cutBtn.SetBounds(_refreshBtn.Right + group, y2, btnW, btnH);
+        _copyBtn.SetBounds(_cutBtn.Right + orgGap, y2, btnW, btnH);
+        _pasteBtn.SetBounds(_copyBtn.Right + orgGap, y2, btnW, btnH);
+        _deleteBtn.SetBounds(_pasteBtn.Right + orgGap, y2, btnW, btnH);
+        _explorerBtn.SetBounds(_deleteBtn.Right + group, y2, btnW, btnH);
         _pinBtn.SetBounds(_explorerBtn.Right + orgGap, y2, btnW, btnH);
 
         int viewLeft = Width - edge - viewW;
@@ -761,7 +775,9 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_filterClearBtn, ChromeIcons.Close(pathS));
         AssignGlyph(_newFolderBtn, ChromeIcons.NewFolder(s));
         AssignGlyph(_refreshBtn, ChromeIcons.Refresh(s));
-        AssignGlyph(_clipboardBtn, ChromeIcons.Clipboard(s));
+        AssignGlyph(_cutBtn, ChromeIcons.Cut(s));
+        AssignGlyph(_copyBtn, ChromeIcons.Copy(s));
+        AssignGlyph(_pasteBtn, ChromeIcons.Paste(s));
         AssignGlyph(_deleteBtn, ChromeIcons.Delete(s));
         AssignGlyph(_explorerBtn, ChromeIcons.Explorer(s));
         AssignGlyph(_pinBtn, ChromeIcons.Pin(s));
@@ -800,7 +816,9 @@ internal sealed class BrowseForm : Form
         }
         _newFolderBtn.Glyph = null;
         _refreshBtn.Glyph = null;
-        _clipboardBtn.Glyph = null;
+        _cutBtn.Glyph = null;
+        _copyBtn.Glyph = null;
+        _pasteBtn.Glyph = null;
         _deleteBtn.Glyph = null;
         _explorerBtn.Glyph = null;
         _pinBtn.Glyph = null;
@@ -972,7 +990,6 @@ internal sealed class BrowseForm : Form
         if (MenuJustClosed())
             return;
         CloseViewMenu();
-        CloseClipboardMenu();
         ViewMenuForm menu = new ViewMenuForm(_viewMode, _showHidden, _dpi, _fit);
         _viewMenu = menu;
         menu.ModeChosen += delegate(BrowseViewMode mode) { SetViewMode(mode); };
@@ -1008,67 +1025,6 @@ internal sealed class BrowseForm : Form
         }
         _viewMenu.Close();
         _viewMenu = null;
-    }
-
-    private void ToggleClipboardMenu()
-    {
-        _session.NoteActivity();
-        if (_clipboardMenu != null && !_clipboardMenu.IsDisposed && _clipboardMenu.Visible)
-        {
-            _clipboardMenu.Close();
-            return;
-        }
-        if (MenuJustClosed())
-            return;
-        CloseClipboardMenu();
-        CloseViewMenu();
-        DirEntry entry = SelectedEntry();
-        bool canCopyCut = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
-        bool canPaste = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
-            && ShellClipboard.CanPaste();
-        ClipboardMenuForm menu = new ClipboardMenuForm(canCopyCut, canPaste, _dpi, _fit);
-        _clipboardMenu = menu;
-        menu.ActionChosen += OnClipboardAction;
-        menu.FormClosed += delegate
-        {
-            NoteMenuClosed();
-            if (ReferenceEquals(_clipboardMenu, menu))
-                _clipboardMenu = null;
-            if (!_clipboardBtn.IsDisposed)
-                _clipboardBtn.Selected = false;
-        };
-        menu.PlaceBelow(_clipboardBtn);
-        menu.Show(this);
-        if (menu.IsHandleCreated)
-            ShellChrome.ZOrder(menu.Handle, true);
-        _clipboardBtn.Selected = true;
-    }
-
-    private void CloseClipboardMenu()
-    {
-        if (_clipboardMenu == null || _clipboardMenu.IsDisposed)
-        {
-            _clipboardMenu = null;
-            return;
-        }
-        _clipboardMenu.Close();
-        _clipboardMenu = null;
-    }
-
-    private void OnClipboardAction(ClipboardMenuAction action)
-    {
-        switch (action)
-        {
-            case ClipboardMenuAction.Copy:
-                ClipboardCopySelected(false);
-                break;
-            case ClipboardMenuAction.Cut:
-                ClipboardCopySelected(true);
-                break;
-            case ClipboardMenuAction.Paste:
-                ClipboardPaste();
-                break;
-        }
     }
 
     private void ClipboardCopySelected(bool cut)
@@ -1148,13 +1104,20 @@ internal sealed class BrowseForm : Form
     private void SyncActionButtons()
     {
         DirEntry entry = SelectedEntry();
-        bool canDelete = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
+        bool canCopyCut = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
+        bool canPaste = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
+            && ShellClipboard.CanPaste();
+        bool canDelete = canCopyCut;
         bool canNewFolder = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath);
         _newFolderBtn.Enabled = canNewFolder;
         _tips.SetToolTip(_newFolderBtn, canNewFolder ? "New folder" : "New folder (not available on This PC)");
         _refreshBtn.Enabled = true;
-        _clipboardBtn.Enabled = true;
-        _tips.SetToolTip(_clipboardBtn, "Clipboard (Copy / Cut / Paste)");
+        _cutBtn.Enabled = canCopyCut;
+        _copyBtn.Enabled = canCopyCut;
+        _pasteBtn.Enabled = canPaste;
+        _tips.SetToolTip(_cutBtn, "Cut");
+        _tips.SetToolTip(_copyBtn, "Copy");
+        _tips.SetToolTip(_pasteBtn, canPaste ? "Paste" : "Paste (clipboard empty or not available here)");
         _tips.SetToolTip(_filterBox, "Filter names in this folder (Ctrl+F)");
         _tips.SetToolTip(_pathHost, "Click a crumb to go up, or click empty space to edit (Ctrl+L)");
         _deleteBtn.Enabled = canDelete;
@@ -2147,7 +2110,9 @@ internal sealed class BrowseForm : Form
                 if (entry == null || string.IsNullOrEmpty(entry.FullPath))
                     return;
                 bool pinned = entry.IsDirectory && _session.IsPathPinned(entry.FullPath);
-                _ctxMenu.ShowForItem(_list, e.Location, entry, pinned);
+                bool canPasteItem = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
+                    && ShellClipboard.CanPaste();
+                _ctxMenu.ShowForItem(_list, e.Location, entry, pinned, canPasteItem);
                 return;
             }
 
@@ -2213,7 +2178,8 @@ internal sealed class BrowseForm : Form
                 NavigateTo(entry.FullPath, entry.Name);
                 return;
             }
-            Process.Start(new ProcessStartInfo(entry.FullPath) { UseShellExecute = true });
+            if (!ShellFileOps.OpenDefault(entry.FullPath))
+                throw new InvalidOperationException("Open failed");
             _session.NotifyRecentAccess(entry.FullPath);
         }
         catch (Exception ex)
@@ -2221,6 +2187,70 @@ internal sealed class BrowseForm : Form
             Program.LogError(ex, "activate");
             _status.Text = "Could not open: " + ex.Message;
         }
+    }
+
+    private void OpenSelectedWith()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDirectory || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        if (!ShellFileOps.OpenWith(entry.FullPath))
+            SetActionStatus("Could not open Open with dialog");
+    }
+
+    private void OnSendToRequested(string destId)
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        string error;
+        string dest = SendToCatalog.CopyTo(destId, entry.FullPath, out error);
+        if (dest == null)
+        {
+            SetActionStatus("Send to failed: " + (error ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Sent to " + destId + ": " + Path.GetFileName(dest));
+        if (!_thisPc && !string.IsNullOrEmpty(_currentPath)
+            && string.Equals(Path.GetDirectoryName(dest), _currentPath, StringComparison.OrdinalIgnoreCase))
+        {
+            ReloadCurrentListing();
+            SelectPathInList(dest);
+        }
+    }
+
+    private void CompressSelected()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        string error;
+        string zip = ZipOps.Compress(entry.FullPath, out error);
+        if (zip == null)
+        {
+            SetActionStatus("Compress failed: " + (error ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Created " + Path.GetFileName(zip));
+        ReloadCurrentListing();
+        SelectPathInList(zip);
+    }
+
+    private void ExtractSelected()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath) || !ZipOps.IsZipPath(entry.FullPath))
+            return;
+        string error;
+        string folder = ZipOps.ExtractAll(entry.FullPath, out error);
+        if (folder == null)
+        {
+            SetActionStatus("Extract failed: " + (error ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Extracted to " + Path.GetFileName(folder));
+        ReloadCurrentListing();
+        SelectPathInList(folder);
     }
 
     private void NavigateUp()
