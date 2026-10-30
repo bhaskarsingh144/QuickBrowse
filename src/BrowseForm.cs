@@ -2120,7 +2120,7 @@ internal sealed class BrowseForm : Form
         }
         catch (Exception ex)
         {
-            Program.LogCrash(ex);
+            Program.LogError(ex, "context-menu");
             SetActionStatus("Menu failed: " + ex.Message);
         }
     }
@@ -2181,7 +2181,7 @@ internal sealed class BrowseForm : Form
         }
         catch (Exception ex)
         {
-            Program.LogCrash(ex);
+            Program.LogError(ex, "activate");
             _status.Text = "Could not open: " + ex.Message;
         }
     }
