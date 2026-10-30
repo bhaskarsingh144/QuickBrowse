@@ -90,7 +90,7 @@ A left-edge **places rail** that feels like part of the desktop chrome (family: 
 | Risk | Mitigation |
 | --- | --- |
 | Left edge fights Win11 tablet gestures | Configurable reveal; optional disable swipe |
-| Shell IContextMenu / drag-drop complexity | IContextMenu hosted for browse pane; drag-drop still deferred |
+| Shell IContextMenu / drag-drop complexity | Managed browse context menus (no IContextMenu); drag-drop still deferred |
 | Large folders UI jank | Virtualized list early if .NET 4.5 ListView pain → reconsider stack |
 | Three edge apps overcrowding | Document reserved edges; allow disable auto-start |
 | “Better than Explorer” scope creep | Non-goals list; rank must-haves |
