@@ -1,0 +1,14 @@
+#!/bin/sh
+# Strip Cursor/agent attribution trailers Cursor may inject into commit messages.
+msg="$1"
+if [ -z "$msg" ] || [ ! -f "$msg" ]; then
+  exit 0
+fi
+tmp="$msg.qb-strip"
+# Remove Co-authored-by Cursor / cursoragent lines and accidental EOF leftovers.
+sed -e '/Co-authored-by:.*[Cc]ursor/d' \
+    -e '/Co-authored-by:.*cursoragent@cursor\.com/d' \
+    -e '/Made with Cursor/d' \
+    -e '/^EOF$/d' \
+    "$msg" > "$tmp" && mv "$tmp" "$msg"
+exit 0

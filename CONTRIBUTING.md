@@ -11,6 +11,16 @@ Thank you for your interest in contributing to QuickBrowse! This document provid
 - Basic knowledge of C# and Windows Forms
 - C# 5 only in this tree (no interpolated strings, no `out var`)
 
+### Git setup (required once per clone)
+
+Install the local `commit-msg` hook so Cursor cannot inject `Co-authored-by: Cursor` trailers:
+
+```powershell
+.\scripts\install-git-hooks.ps1
+```
+
+Also turn **off** Cursor Settings → **Git & PRs** → **Attribution** (Commit Attribution and PR Attribution).
+
 ### Building from Source
 
 1. Clone the repository:
