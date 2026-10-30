@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 internal static class DirectoryModelTests
 {
@@ -13,9 +14,20 @@ internal static class DirectoryModelTests
         ColumnSortDate();
         ColumnSortSize();
         FormatBytesAndMeta();
+        HiddenSkipMatrix();
         if (_failed != 0)
             Environment.Exit(1);
         Console.WriteLine("DirectoryModelTests OK");
+    }
+
+    private static void HiddenSkipMatrix()
+    {
+        Expect(DirectoryModel.ShouldSkip(FileAttributes.Hidden, false), "hidden off skips Hidden");
+        Expect(!DirectoryModel.ShouldSkip(FileAttributes.Hidden, true), "hidden on keeps Hidden");
+        Expect(DirectoryModel.ShouldSkip(FileAttributes.System, false), "system always skip");
+        Expect(DirectoryModel.ShouldSkip(FileAttributes.System, true), "system skip even when show hidden");
+        Expect(DirectoryModel.ShouldSkip(FileAttributes.Hidden | FileAttributes.System, true), "hidden+system skip");
+        Expect(!DirectoryModel.ShouldSkip(FileAttributes.Normal, false), "normal kept");
     }
 
     private static void FoldersSortBeforeFiles()

@@ -65,6 +65,9 @@ internal sealed class BrowseForm : Form
     private bool _suppressFilter;
     private string _filterText = "";
     private Image _filterGlyphImage;
+    private string _statusSticky;
+    private int _statusStickyGen;
+    private long _menuClosedTick;
     private int _sortColumn;
     private bool _sortAsc = true;
     private int _hotIndex = -1;
@@ -78,8 +81,13 @@ internal sealed class BrowseForm : Form
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 
+    private const int EmSetCueBanner = 0x1501;
+
     [DllImport("user32.dll")]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
     public BrowseForm(ShellHost session)
     {
@@ -156,8 +164,9 @@ internal sealed class BrowseForm : Form
         _filterHost.Paint += PaintFilterHost;
 
         _filterGlyph = new Label();
-        _filterGlyph.BackColor = UiTheme.Raised;
+        _filterGlyph.BackColor = Color.Transparent;
         _filterGlyph.AutoSize = false;
+        _filterGlyph.Paint += PaintFilterGlyph;
 
         _filterBox = new TextBox();
         _filterBox.BorderStyle = BorderStyle.None;
@@ -169,6 +178,7 @@ internal sealed class BrowseForm : Form
         _filterBox.Enter += delegate { _session.NoteActivity(); _filterHost.Invalidate(); };
         _filterBox.Leave += delegate { _filterHost.Invalidate(); };
         _filterBox.MouseDown += delegate { _session.NoteActivity(); };
+        _filterBox.HandleCreated += delegate { ApplyFilterCue(); };
 
         _filterClearBtn = MakeIconTool();
         _filterClearBtn.Click += delegate { ClearFilter(); };
@@ -371,6 +381,7 @@ internal sealed class BrowseForm : Form
         ApplyGlyphs();
         RebuildCrumbs();
         LayoutChromeButtons(chromeH);
+        ApplyFilterCue();
         _smallImages.ImageSize = new Size(Px(22), Px(22));
         int tileIcon = Px(UsesContentIcon() ? ChromeLayout.ContentIconDip : ChromeLayout.TileIconDip);
         _largeImages.ImageSize = new Size(tileIcon, tileIcon);
@@ -412,6 +423,11 @@ internal sealed class BrowseForm : Form
         }, true, true);
     }
 
+    private bool TextFieldFocused
+    {
+        get { return _pathEditing || _pathBox.Focused || _filterBox.Focused; }
+    }
+
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         _session.NoteActivity();
@@ -427,6 +443,11 @@ internal sealed class BrowseForm : Form
                 ClearFilter();
                 return true;
             }
+            if (_filterBox.Focused)
+            {
+                _list.Focus();
+                return true;
+            }
             _session.ClosePane();
             return true;
         }
@@ -440,7 +461,7 @@ internal sealed class BrowseForm : Form
             FocusFilter();
             return true;
         }
-        if (!_pathEditing)
+        if (!TextFieldFocused)
         {
             if (keyData == Keys.F5)
             {
@@ -467,6 +488,16 @@ internal sealed class BrowseForm : Form
                 ClipboardPaste();
                 return true;
             }
+            if (keyData == Keys.Enter)
+            {
+                ActivateSelected();
+                return true;
+            }
+            if (keyData == Keys.Delete)
+            {
+                DeleteSelected();
+                return true;
+            }
         }
         if (keyData == (Keys.Alt | Keys.Up))
         {
@@ -476,16 +507,6 @@ internal sealed class BrowseForm : Form
         if (keyData == (Keys.Alt | Keys.Left) || keyData == Keys.BrowserBack)
         {
             NavigateBack();
-            return true;
-        }
-        if (keyData == Keys.Enter && !_pathBox.Focused)
-        {
-            ActivateSelected();
-            return true;
-        }
-        if (keyData == Keys.Delete && !_pathEditing)
-        {
-            DeleteSelected();
             return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
@@ -528,29 +549,31 @@ internal sealed class BrowseForm : Form
     private void PaintFilterHost(object sender, PaintEventArgs e)
     {
         PaintPillHost(e.Graphics, _filterHost, _filterBox.Focused);
-        if (_filterGlyphImage != null)
+    }
+
+    private void PaintFilterGlyph(object sender, PaintEventArgs e)
+    {
+        e.Graphics.Clear(UiTheme.Raised);
+        if (_filterGlyphImage == null)
+            return;
+        try
         {
-            try
-            {
-                int gw = _filterGlyphImage.Width;
-                int gh = _filterGlyphImage.Height;
-                int x = _filterGlyph.Left + (_filterGlyph.Width - gw) / 2;
-                int y = _filterGlyph.Top + (_filterGlyph.Height - gh) / 2;
-                e.Graphics.DrawImage(_filterGlyphImage, x, y, gw, gh);
-            }
-            catch (ArgumentException) { }
-            catch (ObjectDisposedException) { }
+            int gw = _filterGlyphImage.Width;
+            int gh = _filterGlyphImage.Height;
+            int x = (_filterGlyph.Width - gw) / 2;
+            int y = (_filterGlyph.Height - gh) / 2;
+            e.Graphics.DrawImage(_filterGlyphImage, x, y, gw, gh);
         }
-        if (string.IsNullOrEmpty(_filterBox.Text) && !_filterBox.Focused && _uiFont != null)
-        {
-            TextRenderer.DrawText(
-                e.Graphics,
-                "Filter",
-                _uiFont,
-                new Rectangle(_filterBox.Left, 0, _filterBox.Width, _filterHost.Height),
-                UiTheme.Muted,
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
-        }
+        catch (ArgumentException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    private void ApplyFilterCue()
+    {
+        if (_filterBox == null || !_filterBox.IsHandleCreated)
+            return;
+        try { SendMessage(_filterBox.Handle, EmSetCueBanner, (IntPtr)1, "Filter"); }
+        catch { }
     }
 
     private void PaintPathHost(object sender, PaintEventArgs e)
@@ -562,7 +585,6 @@ internal sealed class BrowseForm : Form
         if (_pathEditing)
             return;
 
-        LayoutCrumbHits();
         Font font = _uiFont ?? Font;
         int sepW = PathCrumbs.TextWidth(font, " › ");
         for (int i = 0; i < _crumbs.Count && i < _crumbHits.Count; i++)
@@ -606,7 +628,7 @@ internal sealed class BrowseForm : Form
 
     private void LayoutChromeButtons(int chromeH)
     {
-        // Row 1: Nav | Path | filter slot (reserved) | Close — Row 2: Organize | View.
+        // Row 1: Nav | Path | Filter | Close — Row 2: Organize | View.
         int edge = Px(12);
         int gap = Px(8);
         int group = Px(16);
@@ -614,12 +636,11 @@ internal sealed class BrowseForm : Form
         int btnW = Px(ChromeLayout.PaneChromeBtnWidthDip);
         int viewW = Px(ChromeLayout.PaneViewDropWidthDip);
         int pathH = Px(ChromeLayout.PanePathHeightDip);
-        int filterSlot = Px(ChromeLayout.PaneFilterSlotDip);
+        int filterIdeal = Px(ChromeLayout.PaneFilterSlotDip);
         int rowGap = Px(10);
         int topPad = Math.Max(Px(8), (chromeH - (btnH * 2 + rowGap)) / 2);
         int y1 = topPad;
         int y2 = y1 + btnH + rowGap;
-        // Path sits on the nav row, vertically centered with nav chips.
         int pathY = y1 + (btnH - pathH) / 2;
 
         _backBtn.SetBounds(edge, y1, btnW, btnH);
@@ -627,14 +648,17 @@ internal sealed class BrowseForm : Form
         _closeBtn.SetBounds(Width - edge - btnW, y1, btnW, btnH);
 
         int pathLeft = _upBtn.Right + group;
-        // Filter slot between path and Close.
-        int pathRight = _closeBtn.Left - group - filterSlot - gap;
-        int pathW = Math.Max(Px(160), pathRight - pathLeft);
+        int row1Right = _closeBtn.Left - group;
+        int avail = Math.Max(Px(200), row1Right - pathLeft);
+        int filterW = Math.Min(filterIdeal, Math.Max(Px(110), avail / 3));
+        int pathW = Math.Max(Px(120), avail - gap - filterW);
+        if (pathW + gap + filterW > avail)
+        {
+            filterW = Math.Max(Px(96), avail / 4);
+            pathW = Math.Max(Px(100), avail - gap - filterW);
+        }
         _pathHost.SetBounds(pathLeft, pathY, pathW, pathH);
-
-        int filterLeft = _pathHost.Right + gap;
-        int filterW = Math.Max(Px(120), _closeBtn.Left - group - filterLeft);
-        _filterHost.SetBounds(filterLeft, pathY, filterW, pathH);
+        _filterHost.SetBounds(_pathHost.Right + gap, pathY, filterW, pathH);
 
         int inset = Px(8);
         int copySize = Math.Max(Px(22), pathH - Px(8));
@@ -657,35 +681,44 @@ internal sealed class BrowseForm : Form
             LayoutCrumbHits();
         }
 
-        int clearSize = copySize;
+        LayoutFilterInner(pathBoxH, pathBoxY, inset, copySize);
+
+        // Organize cluster (left) + view segment (right).
+        int clipW = Px(ChromeLayout.PaneViewDropWidthDip);
+        int orgGap = gap;
+        _newFolderBtn.SetBounds(edge, y2, btnW, btnH);
+        _refreshBtn.SetBounds(_newFolderBtn.Right + orgGap, y2, btnW, btnH);
+        _clipboardBtn.SetBounds(_refreshBtn.Right + orgGap, y2, clipW, btnH);
+        _deleteBtn.SetBounds(_clipboardBtn.Right + group, y2, btnW, btnH);
+        _explorerBtn.SetBounds(_deleteBtn.Right + orgGap, y2, btnW, btnH);
+        _pinBtn.SetBounds(_explorerBtn.Right + orgGap, y2, btnW, btnH);
+
+        int viewLeft = Width - edge - viewW;
+        if (_pinBtn.Right + gap > viewLeft)
+            viewLeft = Math.Min(Width - edge - viewW, _pinBtn.Right + gap);
+        _viewBtn.SetBounds(viewLeft, y2, viewW, btnH);
+
+        _pathHost.Invalidate();
+        _filterHost.Invalidate();
+        _filterGlyph.Invalidate();
+    }
+
+    private void LayoutFilterInner(int pathBoxH, int pathBoxY, int inset, int clearSize)
+    {
+        int filterW = _filterHost.Width;
+        int pathH = _filterHost.Height;
         int clearY = Math.Max(1, (pathH - clearSize) / 2);
-        bool hasFilter = !string.IsNullOrEmpty(_filterText);
-        _filterClearBtn.Visible = hasFilter;
+        // Always reserve clear slot so typing does not shrink the text box.
         _filterClearBtn.SetBounds(filterW - inset - clearSize, clearY, clearSize, clearSize);
+        _filterClearBtn.Visible = !string.IsNullOrEmpty(_filterText);
 
         int searchSize = Math.Max(Px(14), pathH - Px(14));
         int searchY = Math.Max(1, (pathH - searchSize) / 2);
         _filterGlyph.SetBounds(inset, searchY, searchSize, searchSize);
 
         int filterBoxLeft = _filterGlyph.Right + Px(6);
-        int filterBoxRight = hasFilter ? (_filterClearBtn.Left - Px(6)) : (filterW - inset);
-        int filterBoxH = pathBoxH;
-        int filterBoxY = pathBoxY;
-        _filterBox.SetBounds(filterBoxLeft, filterBoxY, Math.Max(40, filterBoxRight - filterBoxLeft), filterBoxH);
-
-        // Organize cluster (left) + view segment (right), same baseline.
-        int clipW = Px(ChromeLayout.PaneViewDropWidthDip);
-        _newFolderBtn.SetBounds(edge, y2, btnW, btnH);
-        _refreshBtn.SetBounds(_newFolderBtn.Right + gap, y2, btnW, btnH);
-        _clipboardBtn.SetBounds(_refreshBtn.Right + gap, y2, clipW, btnH);
-        _deleteBtn.SetBounds(_clipboardBtn.Right + group, y2, btnW, btnH);
-        _explorerBtn.SetBounds(_deleteBtn.Right + gap, y2, btnW, btnH);
-        _pinBtn.SetBounds(_explorerBtn.Right + gap, y2, btnW, btnH);
-
-        int viewLeft = Width - edge - viewW;
-        _viewBtn.SetBounds(viewLeft, y2, viewW, btnH);
-
-        _pathHost.Invalidate();
+        int filterBoxRight = _filterClearBtn.Left - Px(6);
+        _filterBox.SetBounds(filterBoxLeft, pathBoxY, Math.Max(40, filterBoxRight - filterBoxLeft), pathBoxH);
     }
 
     private static ChromeToolButton MakeIconTool()
@@ -900,6 +933,16 @@ internal sealed class BrowseForm : Form
         _tips.SetToolTip(_viewBtn, tip);
     }
 
+    private bool MenuJustClosed()
+    {
+        return Environment.TickCount - _menuClosedTick < 220;
+    }
+
+    private void NoteMenuClosed()
+    {
+        _menuClosedTick = Environment.TickCount;
+    }
+
     private void ToggleViewMenu()
     {
         _session.NoteActivity();
@@ -908,6 +951,8 @@ internal sealed class BrowseForm : Form
             _viewMenu.Close();
             return;
         }
+        if (MenuJustClosed())
+            return;
         CloseViewMenu();
         CloseClipboardMenu();
         ViewMenuForm menu = new ViewMenuForm(_viewMode, _showHidden, _dpi, _fit);
@@ -923,6 +968,7 @@ internal sealed class BrowseForm : Form
         };
         menu.FormClosed += delegate
         {
+            NoteMenuClosed();
             if (ReferenceEquals(_viewMenu, menu))
                 _viewMenu = null;
             if (!_viewBtn.IsDisposed)
@@ -954,6 +1000,8 @@ internal sealed class BrowseForm : Form
             _clipboardMenu.Close();
             return;
         }
+        if (MenuJustClosed())
+            return;
         CloseClipboardMenu();
         CloseViewMenu();
         DirEntry entry = SelectedEntry();
@@ -965,6 +1013,7 @@ internal sealed class BrowseForm : Form
         menu.ActionChosen += OnClipboardAction;
         menu.FormClosed += delegate
         {
+            NoteMenuClosed();
             if (ReferenceEquals(_clipboardMenu, menu))
                 _clipboardMenu = null;
             if (!_clipboardBtn.IsDisposed)
@@ -1010,13 +1059,13 @@ internal sealed class BrowseForm : Form
         DirEntry entry = SelectedEntry();
         if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
         {
-            _status.Text = cut ? "Nothing to cut" : "Nothing to copy";
+            SetActionStatus(cut ? "Nothing to cut" : "Nothing to copy");
             return;
         }
         if (ShellClipboard.SetFiles(new string[] { entry.FullPath }, cut))
-            _status.Text = cut ? "Cut to clipboard" : "Copied to clipboard";
+            SetActionStatus(cut ? "Cut to clipboard" : "Copied to clipboard");
         else
-            _status.Text = "Clipboard failed";
+            SetActionStatus("Clipboard failed");
     }
 
     private void ClipboardPaste()
@@ -1024,17 +1073,17 @@ internal sealed class BrowseForm : Form
         _session.NoteActivity();
         if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
         {
-            _status.Text = "Cannot paste here";
+            SetActionStatus("Cannot paste here");
             return;
         }
         string status;
         if (ShellClipboard.PasteInto(_currentPath, out status))
         {
-            _status.Text = status ?? "Pasted";
+            SetActionStatus(status ?? "Pasted");
             ReloadCurrentListing();
         }
         else
-            _status.Text = status ?? "Paste failed";
+            SetActionStatus(status ?? "Paste failed");
     }
 
     private void CreateNewFolder()
@@ -1042,19 +1091,19 @@ internal sealed class BrowseForm : Form
         _session.NoteActivity();
         if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
         {
-            _status.Text = "Cannot create a folder here";
+            SetActionStatus("Cannot create a folder here");
             return;
         }
         try
         {
             string dest = UniqueNewFolderPath(_currentPath);
             Directory.CreateDirectory(dest);
-            _status.Text = "Created " + Path.GetFileName(dest);
+            SetActionStatus("Created " + Path.GetFileName(dest));
             ReloadCurrentListing();
         }
         catch (Exception ex)
         {
-            _status.Text = ex.Message;
+            SetActionStatus(ex.Message);
         }
     }
 
@@ -1084,8 +1133,12 @@ internal sealed class BrowseForm : Form
         bool canDelete = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
         bool canNewFolder = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath);
         _newFolderBtn.Enabled = canNewFolder;
+        _tips.SetToolTip(_newFolderBtn, canNewFolder ? "New folder" : "New folder (not available on This PC)");
         _refreshBtn.Enabled = true;
         _clipboardBtn.Enabled = true;
+        _tips.SetToolTip(_clipboardBtn, "Clipboard (Copy / Cut / Paste)");
+        _tips.SetToolTip(_filterBox, "Filter names in this folder (Ctrl+F)");
+        _tips.SetToolTip(_pathHost, "Click a crumb to go up, or click empty space to edit (Ctrl+L)");
         _deleteBtn.Enabled = canDelete;
         _pathCopyBtn.Enabled = true;
         SyncPinChrome();
@@ -1103,6 +1156,21 @@ internal sealed class BrowseForm : Form
 
     public void ShowStatus(string text)
     {
+        SetActionStatus(text);
+    }
+
+    private void SetActionStatus(string text)
+    {
+        _statusSticky = text ?? "";
+        // Match the next listing load gen (LoadListingAsync increments first).
+        _statusStickyGen = _loadGen + 1;
+        _status.Text = _statusSticky;
+    }
+
+    private void SetListingStatus(string text)
+    {
+        _statusSticky = null;
+        _statusStickyGen = -1;
         _status.Text = text ?? "";
     }
 
@@ -1135,14 +1203,14 @@ internal sealed class BrowseForm : Form
         if (_session.IsPathPinned(_currentPath))
         {
             if (_session.UnpinCurrentFolder())
-                _status.Text = "Unpinned";
+                SetActionStatus("Unpinned");
         }
         else
         {
             if (_session.PinCurrentFolder())
-                _status.Text = "Pinned";
+                SetActionStatus("Pinned");
             else
-                _status.Text = "Could not pin";
+                SetActionStatus("Could not pin");
         }
         SyncPinChrome();
     }
@@ -1156,14 +1224,14 @@ internal sealed class BrowseForm : Form
         if (_session.IsPathPinned(entry.FullPath))
         {
             _session.OnUnpinPath(entry.FullPath);
-            _status.Text = "Unpinned";
+            SetActionStatus("Unpinned");
         }
         else
         {
             if (_session.PinFolderPath(entry.FullPath))
-                _status.Text = "Pinned " + entry.Name;
+                SetActionStatus("Pinned " + entry.Name);
             else
-                _status.Text = "Could not pin";
+                SetActionStatus("Could not pin");
         }
         SyncPinChrome();
         SyncPinMenuItem();
@@ -1231,20 +1299,30 @@ internal sealed class BrowseForm : Form
         if (_pathEditing || _uiFont == null || _pathHost.Width < 8)
             return;
         int inset = Px(8);
+        int segPad = Px(6);
         int copyReserve = _pathCopyBtn.Width + Px(14);
-        int maxW = Math.Max(40, _pathHost.Width - inset - copyReserve);
+        int maxRight = _pathCopyBtn.Left - Px(6);
+        int maxW = Math.Max(40, maxRight - inset);
         int sepW = PathCrumbs.TextWidth(_uiFont, " › ");
-        _crumbs.AddRange(PathCrumbs.Fit(_crumbSource, _uiFont, maxW, sepW, 0));
+        _crumbs.AddRange(PathCrumbs.Fit(_crumbSource, _uiFont, maxW, sepW, segPad));
         int x = inset;
         int h = Math.Max(Px(18), _pathHost.Height - Px(8));
         int y = Math.Max(1, (_pathHost.Height - h) / 2);
         for (int i = 0; i < _crumbs.Count; i++)
         {
             int tw = PathCrumbs.TextWidth(_uiFont, _crumbs[i].Label ?? "");
-            Rectangle hit = new Rectangle(x, y, Math.Max(8, tw + Px(6)), h);
-            _crumbHits.Add(hit);
-            x += tw + Px(6) + sepW;
+            int hitW = Math.Max(8, tw + segPad);
+            if (x + hitW > maxRight)
+                hitW = Math.Max(8, maxRight - x);
+            if (hitW <= 0)
+                break;
+            _crumbHits.Add(new Rectangle(x, y, hitW, h));
+            x += hitW + sepW;
+            if (x >= maxRight)
+                break;
         }
+        while (_crumbHits.Count < _crumbs.Count)
+            _crumbs.RemoveAt(_crumbs.Count - 1);
     }
 
     private void BeginPathEdit()
@@ -1457,7 +1535,8 @@ internal sealed class BrowseForm : Form
     private void LoadListingAsync(bool thisPc, string path)
     {
         int gen = Interlocked.Increment(ref _loadGen);
-        _status.Text = "Loading…";
+        if (string.IsNullOrEmpty(_statusSticky) || _statusStickyGen != gen)
+            _status.Text = "Loading…";
         ClearListAndImages();
         _entries.Clear();
         SyncActionButtons();
@@ -1483,7 +1562,7 @@ internal sealed class BrowseForm : Form
         if (listing == null)
         {
             RebuildItemsFromCache();
-            _status.Text = "Nothing to show.";
+            FinishListingStatus("Nothing to show.");
             SyncNavButtons();
             SyncActionButtons();
             return;
@@ -1491,7 +1570,7 @@ internal sealed class BrowseForm : Form
         if (!string.IsNullOrEmpty(listing.Error))
         {
             RebuildItemsFromCache();
-            _status.Text = listing.Error;
+            FinishListingStatus(listing.Error);
             SyncNavButtons();
             SyncActionButtons();
             return;
@@ -1501,9 +1580,24 @@ internal sealed class BrowseForm : Form
             _entries.Add(entries[i]);
         SortCachedEntries();
         RebuildItemsFromCache();
-        UpdateFilterStatus();
+        FinishListingStatus(null);
         SyncNavButtons();
         SyncActionButtons();
+    }
+
+    private void FinishListingStatus(string fallback)
+    {
+        if (!string.IsNullOrEmpty(_statusSticky) && _statusStickyGen == _loadGen)
+        {
+            _status.Text = _statusSticky;
+            return;
+        }
+        if (!string.IsNullOrEmpty(fallback))
+        {
+            SetListingStatus(fallback);
+            return;
+        }
+        UpdateFilterStatus();
     }
 
     private void SortCachedEntries()
@@ -1600,7 +1694,11 @@ internal sealed class BrowseForm : Form
         _filterText = _filterBox.Text ?? "";
         RebuildItemsFromCache();
         UpdateFilterStatus();
-        LayoutChromeButtons(_chrome.Height);
+        int inset = Px(8);
+        int clearSize = Math.Max(Px(22), _filterHost.Height - Px(8));
+        int pathBoxH = Math.Min(_filterBox.PreferredHeight + Px(2), Math.Max(Px(16), _filterHost.Height - Px(8)));
+        int pathBoxY = Math.Max(1, (_filterHost.Height - pathBoxH) / 2);
+        LayoutFilterInner(pathBoxH, pathBoxY, inset, clearSize);
         _filterHost.Invalidate();
     }
 
@@ -1635,12 +1733,7 @@ internal sealed class BrowseForm : Form
 
     private void ClearFilter(bool rebuild)
     {
-        if (string.IsNullOrEmpty(_filterText) && string.IsNullOrEmpty(_filterBox.Text))
-        {
-            if (rebuild)
-                LayoutChromeButtons(_chrome.Height);
-            return;
-        }
+        bool had = !string.IsNullOrEmpty(_filterText) || !string.IsNullOrEmpty(_filterBox.Text);
         _suppressFilter = true;
         try
         {
@@ -1651,28 +1744,36 @@ internal sealed class BrowseForm : Form
         {
             _suppressFilter = false;
         }
-        if (rebuild)
+        int inset = Px(8);
+        int clearSize = Math.Max(Px(22), _filterHost.Height - Px(8));
+        int pathBoxH = Math.Min(_filterBox.PreferredHeight + Px(2), Math.Max(Px(16), _filterHost.Height - Px(8)));
+        int pathBoxY = Math.Max(1, (_filterHost.Height - pathBoxH) / 2);
+        LayoutFilterInner(pathBoxH, pathBoxY, inset, clearSize);
+        _filterHost.Invalidate();
+        if (rebuild && had)
         {
             RebuildItemsFromCache();
             UpdateFilterStatus();
-            LayoutChromeButtons(_chrome.Height);
-            _filterHost.Invalidate();
         }
     }
 
     private void UpdateFilterStatus()
     {
+        if (!string.IsNullOrEmpty(_statusSticky) && _statusStickyGen == _loadGen
+            && string.IsNullOrEmpty(_filterText))
+        {
+            _status.Text = _statusSticky;
+            return;
+        }
         int total = _entries.Count;
         if (total == 0)
         {
-            if (string.IsNullOrEmpty(_status.Text) || _status.Text.IndexOf("items", StringComparison.OrdinalIgnoreCase) >= 0
-                || _status.Text == "Empty folder" || _status.Text == "Nothing to show.")
-                _status.Text = "Empty folder";
+            SetListingStatus("Empty folder");
             return;
         }
         if (string.IsNullOrEmpty(_filterText))
         {
-            _status.Text = total + " items";
+            SetListingStatus(total + " items");
             return;
         }
         int shown = 0;
@@ -1681,7 +1782,7 @@ internal sealed class BrowseForm : Form
             if (PassesFilter(_entries[i], _filterText))
                 shown++;
         }
-        _status.Text = shown + " of " + total + " items";
+        SetListingStatus(shown + " of " + total + " items");
     }
 
     /// <summary>
@@ -2224,11 +2325,11 @@ internal sealed class BrowseForm : Form
 
         if (ShellContextMenu.SendToRecycleBin(Handle, entry.FullPath))
         {
-            _status.Text = "Moved to Recycle Bin: " + entry.Name;
+            SetActionStatus("Moved to Recycle Bin: " + entry.Name);
             ReloadCurrentListing();
         }
         else
-            _status.Text = "Could not delete";
+            SetActionStatus("Could not delete");
     }
 
     private void ShowSelectedInExplorer()
