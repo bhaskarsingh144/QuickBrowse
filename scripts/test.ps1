@@ -13,6 +13,7 @@ if (-not (Test-Path $outputDir)) {
 
 $fw = "C:\Windows\Microsoft.NET\Framework64\v4.0.30319"
 $csc = Join-Path $fw "csc.exe"
+# $fw also used for ZipOps compression assembly refs below
 if (-not (Test-Path $csc)) {
     Write-Error "C# compiler not found at $csc"
     exit 1
@@ -117,5 +118,28 @@ Run-Suite "CrashLogTests" @(
     (Join-Path $srcDir "CrashLog.cs"),
     (Join-Path $testsDir "CrashLogTests.cs")
 ) "CrashLogTests.exe" $core
+
+$zipRefs = $core + @(
+    (Join-Path $fw "System.IO.Compression.dll"),
+    (Join-Path $fw "System.IO.Compression.FileSystem.dll")
+)
+
+Run-Suite "FileCopyTests" @(
+    (Join-Path $srcDir "FileCopy.cs"),
+    (Join-Path $testsDir "FileCopyTests.cs")
+) "FileCopyTests.exe" $core
+
+Run-Suite "ZipOpsTests" @(
+    (Join-Path $srcDir "FileCopy.cs"),
+    (Join-Path $srcDir "ZipOps.cs"),
+    (Join-Path $testsDir "ZipOpsTests.cs")
+) "ZipOpsTests.exe" $zipRefs
+
+Run-Suite "SendToCatalogTests" @(
+    (Join-Path $srcDir "PlacesCatalog.cs"),
+    (Join-Path $srcDir "FileCopy.cs"),
+    (Join-Path $srcDir "SendToCatalog.cs"),
+    (Join-Path $testsDir "SendToCatalogTests.cs")
+) "SendToCatalogTests.exe" $core
 
 Write-Host "All tests passed." -ForegroundColor Green
