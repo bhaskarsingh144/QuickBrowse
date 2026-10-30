@@ -14,8 +14,12 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] Click Downloads → detached pane opens with gap; lists folder
 - [ ] Single-click folder enters; single-click file opens with shell
 - [ ] Right-click item → shell menu (Open with / Properties / type verbs); empty area → background menu
-- [ ] Back / Up / crumbs / Ctrl+L·F4 edit path / Filter (Ctrl+F, Esc clears) / New folder · Refresh · Clipboard / Del / Explorer / Pin / view (+ Show hidden) / ×; F5 · Ctrl+Shift+N · Ctrl+C/X/V; Esc / re-tap; Enter / Alt+Up / Delete key
-- [ ] View dropdown: Tiles / Content / Details; preference survives restart
+- [ ] Back / Up / crumbs / Ctrl+L·F4 edit path / Filter (Ctrl+F) / New folder · Refresh · Clipboard / Del / Explorer / Pin / view (+ Show hidden) / ×
+- [ ] Esc ladder: cancel path edit → clear filter → blur filter → close pane
+- [ ] While Filter/path focused: typing works; Delete/Ctrl+C/X/V do not hit list actions
+- [ ] Keys when list focused: F5 · Ctrl+Shift+N · Ctrl+C/X/V · Enter · Alt+Up · Delete
+- [ ] View dropdown: Tiles / Content / Details + Show hidden; prefs survive restart
+- [ ] This PC: New folder disabled; Paste blocked; Show hidden does not change drive list
 - [ ] Access-denied / empty folder show status text
 - [ ] Tray → Show / Exit
 - [ ] Idle ~30s without activity closes pane (+ flyout if open)

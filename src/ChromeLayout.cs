@@ -55,7 +55,7 @@ internal static class ChromeLayout
     /// <summary>Single view-mode dropdown trigger (glyph + chevron).</summary>
     public const int PaneViewDropWidthDip = 56;
     public const int ViewMenuWidthDip = 200;
-    /// <summary>Row-1 reserved slot to the right of the path (filter arrives later).</summary>
+    /// <summary>Ideal width for the in-folder filter field on row 1.</summary>
     public const int PaneFilterSlotDip = 200;
 
     // Larger icon cells with room for 2-line labels.

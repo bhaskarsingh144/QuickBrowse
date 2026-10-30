@@ -75,13 +75,18 @@ internal static class PathCrumbs
         if (Measure(crumbs, font, sepWidth, pad) <= maxWidth)
             return new List<PathCrumbSeg>(crumbs);
 
-        // Always keep This PC + last; drop middle.
-        if (crumbs.Count <= 3)
-            return new List<PathCrumbSeg>(crumbs);
+        PathCrumbSeg ellipsis = new PathCrumbSeg { Label = "…", IsEllipsis = true };
+        if (crumbs.Count <= 2)
+        {
+            List<PathCrumbSeg> tiny = new List<PathCrumbSeg>();
+            tiny.Add(crumbs[0]);
+            if (crumbs.Count == 2)
+                tiny.Add(crumbs[1]);
+            return tiny;
+        }
 
         List<PathCrumbSeg> fitted = new List<PathCrumbSeg>();
         fitted.Add(crumbs[0]);
-        PathCrumbSeg ellipsis = new PathCrumbSeg { Label = "…", IsEllipsis = true };
         fitted.Add(ellipsis);
         fitted.Add(crumbs[crumbs.Count - 1]);
 
@@ -106,12 +111,12 @@ internal static class PathCrumbs
     {
         if (crumbs == null || crumbs.Count == 0 || font == null)
             return 0;
-        int w = pad * 2;
+        int w = 0;
         for (int i = 0; i < crumbs.Count; i++)
         {
             if (i > 0)
                 w += sepWidth;
-            w += TextWidth(font, crumbs[i].Label ?? "");
+            w += TextWidth(font, crumbs[i].Label ?? "") + pad;
         }
         return w;
     }
