@@ -28,17 +28,32 @@ internal static class Program
             if (!created)
                 return;
             EnsureStartup();
+            CrashLog.EnsureReady();
+            CrashLog.WriteInfo("Session start");
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += OnThreadException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandled;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new ShellHost());
+            try
+            {
+                Application.Run(new ShellHost());
+            }
+            catch (Exception ex)
+            {
+                LogCrash(ex);
+                throw;
+            }
+            finally
+            {
+                CrashLog.WriteInfo("Session end");
+            }
         }
     }
 
     private static void OnThreadException(object sender, ThreadExceptionEventArgs e)
     {
+        // UI-thread unhandled: record a fatal marker; WinForms may keep running.
         LogCrash(e.Exception);
     }
 
@@ -47,19 +62,16 @@ internal static class Program
         LogCrash(e.ExceptionObject as Exception);
     }
 
+    /// <summary>Unhandled / fatal — writes under %LOCALAPPDATA%\QuickBrowse\logs.</summary>
     internal static void LogCrash(Exception ex)
     {
-        try
-        {
-            string dir = Path.GetDirectoryName(Application.ExecutablePath);
-            if (string.IsNullOrEmpty(dir))
-                return;
-            string line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + (ex == null ? "unknown" : ex.ToString()) + Environment.NewLine;
-            File.AppendAllText(Path.Combine(dir, "quickbrowse.log"), line);
-        }
-        catch
-        {
-        }
+        CrashLog.WriteFatal(ex, "unhandled");
+    }
+
+    /// <summary>Recoverable error — appends to app.log only.</summary>
+    internal static void LogError(Exception ex, string context)
+    {
+        CrashLog.WriteError(ex, context);
     }
 
     private static void EnsureStartup()

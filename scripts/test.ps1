@@ -113,4 +113,9 @@ Run-Suite "ShellFileOpsTests" @(
     (Join-Path $testsDir "ShellFileOpsTests.cs")
 ) "ShellFileOpsTests.exe" $drawing
 
+Run-Suite "CrashLogTests" @(
+    (Join-Path $srcDir "CrashLog.cs"),
+    (Join-Path $testsDir "CrashLogTests.cs")
+) "CrashLogTests.exe" $core
+
 Write-Host "All tests passed." -ForegroundColor Green

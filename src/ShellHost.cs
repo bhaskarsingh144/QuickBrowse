@@ -399,7 +399,7 @@ internal sealed class ShellHost : ApplicationContext
         }
         catch (Exception ex)
         {
-            Program.LogCrash(ex);
+            Program.LogError(ex, "shell-sync");
         }
         finally
         {
