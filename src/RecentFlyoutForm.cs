@@ -103,6 +103,7 @@ internal sealed class RecentFlyoutForm : Form
     {
         base.OnHandleCreated(e);
         ChromeVisual.PreferDarkMode(Handle);
+        ChromeVisual.PreferDarkScrollBars(this);
         Remeasure();
         ShellChrome.Pin(Handle);
     }

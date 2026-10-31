@@ -83,6 +83,41 @@ internal static class ChromeVisual
             // DWMWA_WINDOW_CORNER_PREFERENCE = 33, DWMWCP_ROUND = 2
             int corner = 2;
             DwmSetWindowAttribute(hwnd, 33, ref corner, 4);
+            // Dark explorer theme pulls native scrollbars toward the chrome (QuickView-like).
+            SetWindowTheme(hwnd, "DarkMode_Explorer", null);
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// Apply dark Explorer theme to a control tree so embedded scrollbars match QB chrome
+    /// instead of the default light track + black thumb.
+    /// </summary>
+    public static void PreferDarkScrollBars(Control root)
+    {
+        if (root == null)
+            return;
+        try
+        {
+            ApplyDarkScrollTheme(root);
+            foreach (Control child in root.Controls)
+                PreferDarkScrollBars(child);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void ApplyDarkScrollTheme(Control control)
+    {
+        if (control == null || !control.IsHandleCreated)
+            return;
+        try
+        {
+            SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
+            SetWindowTheme(control.Handle, "DarkMode_Explorer", "ScrollBar");
         }
         catch
         {
@@ -91,4 +126,7 @@ internal static class ChromeVisual
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+
+    [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hwnd, string pszSubAppName, string pszSubIdList);
 }

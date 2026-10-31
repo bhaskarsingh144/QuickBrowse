@@ -288,6 +288,7 @@ internal sealed class BrowseForm : Form
         _list.KeyDown += OnListKeyDown;
         _list.MouseUp += OnListMouseUp;
         _list.SelectedIndexChanged += delegate { SyncActionButtons(); };
+        _list.HandleCreated += delegate { ChromeVisual.PreferDarkScrollBars(_list); };
         EnsureColumns();
         ApplyViewMode();
 
@@ -360,6 +361,9 @@ internal sealed class BrowseForm : Form
     {
         base.OnHandleCreated(e);
         ChromeVisual.PreferDarkMode(Handle);
+        ChromeVisual.PreferDarkScrollBars(this);
+        if (_list != null && _list.IsHandleCreated)
+            ChromeVisual.PreferDarkScrollBars(_list);
         Remeasure();
         ShellChrome.Pin(Handle);
     }
