@@ -301,21 +301,30 @@ internal sealed class BrowseForm : Form
         _ctxMenu = new BrowseContextMenu();
         _ctxMenu.OpenRequested += delegate { ActivateSelected(); };
         _ctxMenu.OpenWithRequested += delegate { OpenSelectedWith(); };
+        _ctxMenu.OpenInRequested += OnOpenInRequested;
         _ctxMenu.PinToggleRequested += delegate { PinSelectedFolder(); };
         _ctxMenu.CutRequested += delegate { ClipboardCopySelected(true); };
         _ctxMenu.CopyRequested += delegate { ClipboardCopySelected(false); };
         _ctxMenu.PasteRequested += delegate { ClipboardPaste(); };
         _ctxMenu.CopyPathRequested += delegate { CopySelectedPath(); };
+        _ctxMenu.CopyNameRequested += delegate { CopySelectedName(); };
+        _ctxMenu.CopyPathQuotedRequested += delegate { CopySelectedPathQuoted(); };
+        _ctxMenu.CopyHashRequested += delegate { CopySelectedHash(); };
         _ctxMenu.RenameRequested += delegate { RenameSelected(); };
         _ctxMenu.DeleteRequested += delegate { DeleteSelected(); };
+        _ctxMenu.DuplicateRequested += delegate { DuplicateSelected(); };
+        _ctxMenu.CreateShortcutRequested += delegate { CreateShortcutSelected(); };
+        _ctxMenu.RunAsAdminRequested += delegate { RunSelectedAsAdmin(); };
         _ctxMenu.ExplorerRequested += delegate { ShowSelectedInExplorer(); };
         _ctxMenu.PropertiesRequested += delegate { ShowSelectedProperties(); };
         _ctxMenu.NewFolderRequested += delegate { CreateNewFolder(); };
+        _ctxMenu.NewTextDocumentRequested += delegate { CreateNewTextDocument(); };
         _ctxMenu.RefreshRequested += delegate { ReloadCurrentListing(); };
         _ctxMenu.BackgroundExplorerRequested += delegate { OpenInExplorer(); };
         _ctxMenu.BackgroundPropertiesRequested += delegate { ShowFolderProperties(); };
-        _ctxMenu.CompressRequested += delegate { CompressSelected(); };
-        _ctxMenu.ExtractRequested += delegate { ExtractSelected(); };
+        _ctxMenu.CompressWithRequested += OnCompressWithRequested;
+        _ctxMenu.ExtractWithRequested += OnExtractWithRequested;
+        _ctxMenu.TerminalRequested += OnTerminalRequested;
         _ctxMenu.SendToRequested += OnSendToRequested;
 
         _chrome.Controls.Add(_closeBtn);
@@ -437,7 +446,7 @@ internal sealed class BrowseForm : Form
         _status.Font = _uiFont;
         _list.Font = _tileFont;
         EnsureFieldFonts();
-        _ctxMenu.ApplyFont(_uiFont);
+        _ctxMenu.ApplyMetrics(_dpi, _fit, textFit);
 
         ApplyGlyphs();
         RebuildCrumbs();
@@ -2280,6 +2289,17 @@ internal sealed class BrowseForm : Form
             SetActionStatus("Could not open Open with dialog");
     }
 
+    private void OnOpenInRequested(string appId)
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath) || entry.IsDrive)
+            return;
+        if (!OpenInCatalog.LaunchById(appId, entry.FullPath))
+            SetActionStatus("Could not open in " + appId);
+        else
+            SetActionStatus("Opened in " + appId);
+    }
+
     private void OnSendToRequested(string destId)
     {
         DirEntry entry = SelectedEntry();
@@ -2301,38 +2321,281 @@ internal sealed class BrowseForm : Form
         }
     }
 
-    private void CompressSelected()
+    private void OnCompressWithRequested(string kindName)
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        ArchiveProviderKind kind;
+        if (!TryParseArchiveKind(kindName, out kind))
+        {
+            SetActionStatus("Unknown archive tool");
+            return;
+        }
+        if (kind == ArchiveProviderKind.ZipManaged)
+        {
+            string error;
+            string zip = ZipOps.Compress(entry.FullPath, out error);
+            if (zip == null)
+            {
+                SetActionStatus("Compress failed: " + (error ?? "unknown error"));
+                return;
+            }
+            SetActionStatus("Created " + Path.GetFileName(zip));
+            ReloadCurrentListing();
+            SelectPathInList(zip);
+            return;
+        }
+        ArchiveProvider provider = FindArchiveProvider(kind);
+        if (provider == null)
+        {
+            SetActionStatus("Archive tool not found");
+            return;
+        }
+        string dest = ArchiveCatalog.SuggestZipPath(entry.FullPath);
+        if (string.IsNullOrEmpty(dest))
+        {
+            SetActionStatus("Could not choose archive path");
+            return;
+        }
+        string args = ArchiveCatalog.CompressArgs(kind, entry.FullPath, dest);
+        string runError;
+        if (!ArchiveCatalog.Run(provider, args, out runError))
+        {
+            SetActionStatus("Compress failed: " + (runError ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Compressing with " + provider.Title + "…");
+        ReloadCurrentListing();
+    }
+
+    private void OnExtractWithRequested(string kindName, string mode)
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath) || !ArchiveCatalog.IsArchivePath(entry.FullPath))
+            return;
+        ArchiveProviderKind kind;
+        if (!TryParseArchiveKind(kindName, out kind))
+        {
+            SetActionStatus("Unknown archive tool");
+            return;
+        }
+        if (kind == ArchiveProviderKind.ZipManaged)
+        {
+            if (!ZipOps.IsZipPath(entry.FullPath))
+            {
+                SetActionStatus("Built-in extract supports ZIP only");
+                return;
+            }
+            string error;
+            string folder = ZipOps.ExtractAll(entry.FullPath, out error);
+            if (folder == null)
+            {
+                SetActionStatus("Extract failed: " + (error ?? "unknown error"));
+                return;
+            }
+            SetActionStatus("Extracted to " + Path.GetFileName(folder));
+            ReloadCurrentListing();
+            SelectPathInList(folder);
+            return;
+        }
+        ArchiveProvider provider = FindArchiveProvider(kind);
+        if (provider == null)
+        {
+            SetActionStatus("Archive tool not found");
+            return;
+        }
+        string args;
+        if (string.Equals(mode, "here", StringComparison.OrdinalIgnoreCase))
+            args = ArchiveCatalog.ExtractHereArgs(kind, entry.FullPath);
+        else
+        {
+            string destFolder = ArchiveCatalog.SuggestExtractFolder(entry.FullPath);
+            if (string.IsNullOrEmpty(destFolder))
+            {
+                SetActionStatus("Could not choose extract folder");
+                return;
+            }
+            try { Directory.CreateDirectory(destFolder); } catch { }
+            args = ArchiveCatalog.ExtractToFolderArgs(kind, entry.FullPath, destFolder);
+        }
+        string runError;
+        if (!ArchiveCatalog.Run(provider, args, out runError))
+        {
+            SetActionStatus("Extract failed: " + (runError ?? "unknown error"));
+            return;
+        }
+        SetActionStatus("Extracting with " + provider.Title + "…");
+        ReloadCurrentListing();
+    }
+
+    private void OnTerminalRequested(string kind)
+    {
+        string folder = null;
+        DirEntry entry = SelectedEntry();
+        if (entry != null && entry.IsDirectory && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath))
+            folder = entry.FullPath;
+        else if (!_thisPc && !string.IsNullOrEmpty(_currentPath))
+            folder = _currentPath;
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        {
+            SetActionStatus("No folder for Terminal");
+            return;
+        }
+        if (!ShellFileOps.OpenTerminalHere(folder, kind))
+            SetActionStatus("Could not open Terminal");
+        else
+            SetActionStatus("Opened Terminal");
+    }
+
+    private void CopySelectedName()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        string name = Path.GetFileName(entry.FullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrEmpty(name))
+            name = entry.Name;
+        try
+        {
+            Clipboard.SetText(name ?? "");
+            SetActionStatus("Copied name");
+        }
+        catch (Exception ex)
+        {
+            SetActionStatus(ex.Message);
+        }
+    }
+
+    private void CopySelectedPathQuoted()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        try
+        {
+            Clipboard.SetText("\"" + entry.FullPath + "\"");
+            SetActionStatus("Copied quoted path");
+        }
+        catch (Exception ex)
+        {
+            SetActionStatus(ex.Message);
+        }
+    }
+
+    private void CopySelectedHash()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDirectory || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        string error;
+        string hash = ShellFileOps.Sha256Hex(entry.FullPath, out error);
+        if (hash == null)
+        {
+            SetActionStatus("Hash failed: " + (error ?? "unknown error"));
+            return;
+        }
+        try
+        {
+            Clipboard.SetText(hash);
+            SetActionStatus("Copied SHA-256");
+        }
+        catch (Exception ex)
+        {
+            SetActionStatus(ex.Message);
+        }
+    }
+
+    private void DuplicateSelected()
     {
         DirEntry entry = SelectedEntry();
         if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
             return;
         string error;
-        string zip = ZipOps.Compress(entry.FullPath, out error);
-        if (zip == null)
+        string dest = ShellFileOps.Duplicate(entry.FullPath, out error);
+        if (dest == null)
         {
-            SetActionStatus("Compress failed: " + (error ?? "unknown error"));
+            SetActionStatus("Duplicate failed: " + (error ?? "unknown error"));
             return;
         }
-        SetActionStatus("Created " + Path.GetFileName(zip));
+        SetActionStatus("Duplicated " + Path.GetFileName(dest));
         ReloadCurrentListing();
-        SelectPathInList(zip);
+        SelectPathInList(dest);
     }
 
-    private void ExtractSelected()
+    private void CreateShortcutSelected()
     {
         DirEntry entry = SelectedEntry();
-        if (entry == null || string.IsNullOrEmpty(entry.FullPath) || !ZipOps.IsZipPath(entry.FullPath))
+        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
             return;
         string error;
-        string folder = ZipOps.ExtractAll(entry.FullPath, out error);
-        if (folder == null)
+        string lnk = ShellFileOps.CreateShortcut(entry.FullPath, out error);
+        if (lnk == null)
         {
-            SetActionStatus("Extract failed: " + (error ?? "unknown error"));
+            SetActionStatus("Shortcut failed: " + (error ?? "unknown error"));
             return;
         }
-        SetActionStatus("Extracted to " + Path.GetFileName(folder));
+        SetActionStatus("Created " + Path.GetFileName(lnk));
         ReloadCurrentListing();
-        SelectPathInList(folder);
+        SelectPathInList(lnk);
+    }
+
+    private void RunSelectedAsAdmin()
+    {
+        DirEntry entry = SelectedEntry();
+        if (entry == null || entry.IsDirectory || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+            return;
+        if (!ShellFileOps.RunAsAdministrator(entry.FullPath))
+            SetActionStatus("Could not elevate");
+        else
+            SetActionStatus("Started elevated");
+    }
+
+    private void CreateNewTextDocument()
+    {
+        _session.NoteActivity();
+        if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
+        {
+            SetActionStatus("Cannot create a document here");
+            return;
+        }
+        string created;
+        string error;
+        if (!ShellFileOps.CreateTextDocument(_currentPath, out created, out error))
+        {
+            SetActionStatus(error ?? "Create failed");
+            return;
+        }
+        SetActionStatus("Created " + Path.GetFileName(created));
+        ReloadCurrentListing();
+        SelectPathInList(created);
+    }
+
+    private static bool TryParseArchiveKind(string name, out ArchiveProviderKind kind)
+    {
+        kind = ArchiveProviderKind.ZipManaged;
+        if (string.IsNullOrEmpty(name))
+            return false;
+        try
+        {
+            kind = (ArchiveProviderKind)Enum.Parse(typeof(ArchiveProviderKind), name, true);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static ArchiveProvider FindArchiveProvider(ArchiveProviderKind kind)
+    {
+        IList<ArchiveProvider> all = ArchiveCatalog.DetectedProviders();
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (all[i].Kind == kind)
+                return all[i];
+        }
+        return null;
     }
 
     private void NavigateUp()

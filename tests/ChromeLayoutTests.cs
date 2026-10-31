@@ -15,10 +15,24 @@ internal static class ChromeLayoutTests
         PaneLargerThanRailWithGap();
         CenterNearFraction();
         PaneClearsSiblingStrips();
+        CtxMetricsScaleWithDpi();
 
         Console.WriteLine();
         Console.WriteLine("ChromeLayout tests: {0} passed, {1} failed", _passed, _failed);
         return _failed == 0 ? 0 : 1;
+    }
+
+    private static void CtxMetricsScaleWithDpi()
+    {
+        int baseBtn = ChromeLayout.CtxIconBtnPx(96f, 1f);
+        int hiBtn = ChromeLayout.CtxIconBtnPx(192f, 1f);
+        ExpectTrue(baseBtn == ChromeLayout.CtxIconBtnDip, "ctx btn @96 = dip");
+        ExpectTrue(hiBtn > baseBtn, "ctx btn grows at 200% dpi");
+        int baseGlyph = ChromeLayout.CtxGlyphPx(96f, 1f);
+        int hiGlyph = ChromeLayout.CtxGlyphPx(144f, 1f);
+        ExpectTrue(hiGlyph > baseGlyph, "ctx glyph grows at 150% dpi");
+        ExpectTrue(ChromeLayout.CtxRowMinPx(96f, 1f) == ChromeLayout.CtxRowMinDip, "ctx row @96");
+        ExpectTrue(ChromeLayout.CtxRowMinPx(144f, 1f) > ChromeLayout.CtxRowMinDip, "ctx row grows");
     }
 
     private static void CellContentFitsAtScales()

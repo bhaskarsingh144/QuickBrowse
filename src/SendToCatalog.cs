@@ -9,7 +9,7 @@ internal sealed class SendToDest
     public string Path;
 }
 
-/// <summary>Curated Send to destinations (known folders only — no shell SendTo COM).</summary>
+/// <summary>Curated Send to destinations (known folders + removable drives — no shell SendTo COM).</summary>
 internal static class SendToCatalog
 {
     private static readonly Guid FolderDesktop = new Guid("B4BFCC3A-DB2C-424C-B029-7FE99A87C641");
@@ -22,6 +22,38 @@ internal static class SendToCatalog
         Add(list, "desktop", "Desktop", FolderDesktop);
         Add(list, "documents", "Documents", FolderDocuments);
         Add(list, "downloads", "Downloads", FolderDownloads);
+        try
+        {
+            DriveInfo[] drives = DriveInfo.GetDrives();
+            for (int i = 0; i < drives.Length; i++)
+            {
+                DriveInfo d = drives[i];
+                try
+                {
+                    if (!d.IsReady)
+                        continue;
+                    if (d.DriveType != DriveType.Removable && d.DriveType != DriveType.Network)
+                        continue;
+                    string root = d.RootDirectory.FullName;
+                    string label = d.VolumeLabel;
+                    string title = string.IsNullOrEmpty(label)
+                        ? ("Drive " + root.TrimEnd('\\'))
+                        : (label + " (" + root.TrimEnd('\\') + ")");
+                    list.Add(new SendToDest
+                    {
+                        Id = "drive:" + root,
+                        Title = title,
+                        Path = root
+                    });
+                }
+                catch
+                {
+                }
+            }
+        }
+        catch
+        {
+        }
         return list;
     }
 

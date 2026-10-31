@@ -10,6 +10,9 @@ internal static class ShellFileOpsTests
         RecycleRejectsEmpty();
         RenameRejectsBadInput();
         RenameMovesFile();
+        DuplicateFile();
+        Sha256HexFile();
+        CreateTextDocumentInFolder();
 
         if (_failed != 0)
             Environment.Exit(1);
@@ -44,6 +47,61 @@ internal static class ShellFileOpsTests
             string dest = ShellFileOps.Rename(src, "new.txt", out error);
             Expect(dest != null && File.Exists(dest) && !File.Exists(src), "rename moves file");
             Expect(string.Equals(Path.GetFileName(dest), "new.txt", StringComparison.OrdinalIgnoreCase), "rename dest name");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    private static void DuplicateFile()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "qb-dup-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string src = Path.Combine(dir, "note.txt");
+            File.WriteAllText(src, "dup");
+            string error;
+            string copy = ShellFileOps.Duplicate(src, out error);
+            Expect(copy != null && File.Exists(copy) && File.Exists(src), "duplicate creates copy");
+            Expect(!string.Equals(src, copy, StringComparison.OrdinalIgnoreCase), "duplicate distinct path");
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { }
+        }
+    }
+
+    private static void Sha256HexFile()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "qb-hash-" + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(path, "abc");
+        try
+        {
+            string error;
+            string hash = ShellFileOps.Sha256Hex(path, out error);
+            Expect(hash != null && hash.Length == 64, "sha256 length");
+            Expect(string.Equals(hash,
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                StringComparison.OrdinalIgnoreCase), "sha256 of abc");
+        }
+        finally
+        {
+            try { File.Delete(path); } catch { }
+        }
+    }
+
+    private static void CreateTextDocumentInFolder()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "qb-newtxt-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string created;
+            string error;
+            Expect(ShellFileOps.CreateTextDocument(dir, out created, out error), "create text doc");
+            Expect(created != null && File.Exists(created), "text doc exists");
         }
         finally
         {

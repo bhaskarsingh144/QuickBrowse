@@ -85,6 +85,35 @@ internal static class ChromeLayout
     /// <summary>QuickView-like thin custom scrollbar width.</summary>
     public const int ChromeScrollWidthDip = 10;
 
+    // Managed browse context menu (Win11-like icon row + list).
+    public const int CtxIconBtnDip = 40;
+    /// <summary>List-row glyph — sized near the menu font, not the top icon buttons.</summary>
+    public const int CtxGlyphDip = 18;
+    public const int CtxIconRowPadDip = 6;
+    public const int CtxRowMinDip = 28;
+    /// <summary>Vertical padding inside each list row (keep rows compact; icon+label share midline).</summary>
+    public const int CtxRowPadVDip = 2;
+    public const int CtxMenuPadDip = 6;
+    public const float CtxMenuFontPt = 12.5f;
+
+    /// <summary>Context-menu icon button size at the given DPI/Fit.</summary>
+    public static int CtxIconBtnPx(float dpi, float fit)
+    {
+        return DisplayScale.Px(CtxIconBtnDip, dpi, fit);
+    }
+
+    /// <summary>Context-menu glyph / ImageList size.</summary>
+    public static int CtxGlyphPx(float dpi, float fit)
+    {
+        return DisplayScale.Px(CtxGlyphDip, dpi, fit);
+    }
+
+    /// <summary>Minimum list row height for context menus.</summary>
+    public static int CtxRowMinPx(float dpi, float fit)
+    {
+        return DisplayScale.Px(CtxRowMinDip, dpi, fit);
+    }
+
     public static float FontEm(float fit, float textFit)
     {
         float t = fit * textFit;
