@@ -21,6 +21,8 @@ internal sealed class ShellHost : ApplicationContext
     private const int IdleResetMs = 30000;
     private const int Offscreen = -32000;
     private const int RecentRefreshMs = 5000;
+    /// <summary>Grace after leaving chrome so a slow move across the rail–pane gap does not Park.</summary>
+    private const int ChromeLeaveGraceMs = 320;
 
     private readonly PinStore _pins;
     private readonly PinSession _session;
@@ -35,6 +37,7 @@ internal sealed class ShellHost : ApplicationContext
     private bool _syncing;
     private bool _shown;
     private int _recentRefreshTick;
+    private int _lastPointerOnUsTick;
     private bool _placedShow;
     private bool _placedTopmost;
     private bool _placedPaneZ;
@@ -388,10 +391,19 @@ internal sealed class ShellHost : ApplicationContext
                 && _flyout.Left > -10000 && _flyout.Bounds.Contains(pt);
             bool onRecent = _shown && _session.RecentFlyoutOpen && _recent.Opacity > 0.05
                 && _recent.Left > -10000 && _recent.Bounds.Contains(pt);
+            // Screen-edge → rail (pull), and rail → pane/flyout gaps (crossing).
             bool edgeBridge = _shown
                 && pt.X >= screen.Left && pt.X < _rail.Left
                 && pt.Y >= _rail.Top && pt.Y <= _rail.Bottom;
-            bool pointerOnUs = inside || onPane || onPins || onRecent || edgeBridge;
+            bool chromeBridge = PointerInChromeBridge(pt);
+            bool hit = inside || onPane || onPins || onRecent || edgeBridge || chromeBridge;
+            int now = Environment.TickCount;
+            if (hit)
+                _lastPointerOnUsTick = now;
+            bool inGrace = _shown && _lastPointerOnUsTick != 0
+                && unchecked(now - _lastPointerOnUsTick) >= 0
+                && unchecked(now - _lastPointerOnUsTick) < ChromeLeaveGraceMs;
+            bool pointerOnUs = hit || inGrace;
             bool pressing = (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left && pointerOnUs;
 
             ShellView view = ShellChrome.Decide(ShellEdge.Left, pointerOnUs, pressing, false);
@@ -418,6 +430,46 @@ internal sealed class ShellHost : ApplicationContext
         {
             _syncing = false;
         }
+    }
+
+    /// <summary>
+    /// Treat the visual gap between the rail and an open pane/flyout as still "on us"
+    /// so a normal-speed mouse move does not Park mid-crossing.
+    /// </summary>
+    private bool PointerInChromeBridge(Point pt)
+    {
+        if (!_shown || _rail.Left <= -10000)
+            return false;
+        Rectangle rail = _rail.Bounds;
+        if (_session.PaneOpen && _pane.Opacity > 0.05 && _pane.Left > -10000)
+        {
+            if (InGapBetween(rail, _pane.Bounds, pt))
+                return true;
+        }
+        if (_session.PinsFlyoutOpen && _flyout.Opacity > 0.05 && _flyout.Left > -10000)
+        {
+            if (InGapBetween(rail, _flyout.Bounds, pt))
+                return true;
+        }
+        if (_session.RecentFlyoutOpen && _recent.Opacity > 0.05 && _recent.Left > -10000)
+        {
+            if (InGapBetween(rail, _recent.Bounds, pt))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool InGapBetween(Rectangle a, Rectangle b, Point pt)
+    {
+        // Horizontal corridor between the two rects (usually rail left, satellite right).
+        int gapLeft = Math.Min(a.Right, b.Left);
+        int gapRight = Math.Max(a.Right, b.Left);
+        if (gapRight <= gapLeft)
+            return false;
+        // Vertical span = union so diagonal travel still counts.
+        int top = Math.Min(a.Top, b.Top);
+        int bottom = Math.Max(a.Bottom, b.Bottom);
+        return pt.X >= gapLeft && pt.X <= gapRight && pt.Y >= top && pt.Y <= bottom;
     }
 
     /// <summary>

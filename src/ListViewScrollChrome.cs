@@ -6,8 +6,9 @@ using System.Windows.Forms;
 /// <summary>
 /// Hides the native ListView vertical scrollbar and drives a ChromeScrollBar instead.
 /// </summary>
-internal sealed class ListViewScrollChrome : IDisposable
+internal sealed class ListViewScrollChrome : IDisposable, IMessageFilter
 {
+    private const int WM_MOUSEWHEEL = 0x020A;
     private const int SB_VERT = 1;
     private const int SIF_RANGE = 0x0001;
     private const int SIF_PAGE = 0x0002;
@@ -32,6 +33,8 @@ internal sealed class ListViewScrollChrome : IDisposable
         _list = list;
         _bar = bar;
         _bar.ValueChanged += OnBarValueChanged;
+        _bar.MouseWheel += OnMouseWheel;
+        _list.MouseWheel += OnMouseWheel;
         _list.HandleCreated += OnListHandle;
         _list.Resize += delegate { SyncFromList(); };
         _list.SelectedIndexChanged += delegate { SyncFromList(); };
@@ -39,15 +42,36 @@ internal sealed class ListViewScrollChrome : IDisposable
         _poll.Interval = 120;
         _poll.Tick += delegate { SyncFromList(); };
         _poll.Start();
+        Application.AddMessageFilter(this);
         if (_list.IsHandleCreated)
             OnListHandle(_list, EventArgs.Empty);
     }
 
     public void Dispose()
     {
+        Application.RemoveMessageFilter(this);
         _poll.Stop();
         _poll.Dispose();
         _bar.ValueChanged -= OnBarValueChanged;
+        _bar.MouseWheel -= OnMouseWheel;
+        _list.MouseWheel -= OnMouseWheel;
+    }
+
+    public bool PreFilterMessage(ref Message m)
+    {
+        if (m.Msg != WM_MOUSEWHEEL || _list == null || _list.IsDisposed || !_list.IsHandleCreated)
+            return false;
+        if (!_list.Visible)
+            return false;
+        Point screen = Control.MousePosition;
+        bool overList = _list.RectangleToScreen(_list.ClientRectangle).Contains(screen);
+        bool overBar = _bar != null && _bar.Visible
+            && _bar.RectangleToScreen(_bar.ClientRectangle).Contains(screen);
+        if (!overList && !overBar)
+            return false;
+        int delta = (short)((m.WParam.ToInt64() >> 16) & 0xffff);
+        ApplyWheelDelta(delta);
+        return true; // eat — avoid native + our handler double-scrolling
     }
 
     public void SyncFromList()
@@ -103,6 +127,32 @@ internal sealed class ListViewScrollChrome : IDisposable
     {
         ShowScrollBar(_list.Handle, SB_VERT, false);
         SyncFromList();
+    }
+
+    private void OnMouseWheel(object sender, MouseEventArgs e)
+    {
+        ApplyWheelDelta(e.Delta);
+    }
+
+    /// <summary>Scroll from a wheel delta (e.g. form WndProc when focus is elsewhere).</summary>
+    public void ApplyWheelDelta(int delta)
+    {
+        if (_list == null || _list.IsDisposed || !_list.IsHandleCreated)
+            return;
+        // Hiding the native SB_VERT often breaks ListView's built-in wheel scroll.
+        // Drive our bar (and thus LVM_SCROLL) from the wheel delta instead.
+        SyncFromList();
+        if (!_bar.Visible)
+            return;
+        int lines = SystemInformation.MouseWheelScrollLines;
+        if (lines <= 0)
+            lines = 3;
+        // Scroll units match SB_VERT / LVM_SCROLL (pixels in icon/tile views).
+        int linePx = Math.Max(24, Math.Min(64, _bar.LargeChange / 8));
+        int notches = delta / 120;
+        if (notches == 0)
+            notches = delta > 0 ? 1 : -1;
+        _bar.Value = _bar.Value - (notches * lines * linePx);
     }
 
     private void OnBarValueChanged(object sender, EventArgs e)
