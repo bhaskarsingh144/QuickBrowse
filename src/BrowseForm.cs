@@ -44,6 +44,8 @@ internal sealed class BrowseForm : Form
     private readonly ChromeToolButton _closeBtn;
     private readonly Label _status;
     private readonly ListView _list;
+    private readonly ChromeScrollBar _listScroll;
+    private readonly ListViewScrollChrome _listScrollChrome;
     private readonly ImageList _smallImages;
     private readonly ImageList _largeImages;
     private readonly BrowseContextMenu _ctxMenu;
@@ -264,6 +266,10 @@ internal sealed class BrowseForm : Form
         _content.BackColor = UiTheme.Bg;
         _content.Padding = new Padding(10, 8, 10, 4);
 
+        _listScroll = new ChromeScrollBar();
+        _listScroll.Dock = DockStyle.Right;
+        _listScroll.Width = 10;
+
         _list = new ListView();
         _list.Dock = DockStyle.Fill;
         _list.FullRowSelect = true;
@@ -288,9 +294,9 @@ internal sealed class BrowseForm : Form
         _list.KeyDown += OnListKeyDown;
         _list.MouseUp += OnListMouseUp;
         _list.SelectedIndexChanged += delegate { SyncActionButtons(); };
-        _list.HandleCreated += delegate { ChromeVisual.PreferDarkScrollBars(_list); };
         EnsureColumns();
         ApplyViewMode();
+        _listScrollChrome = new ListViewScrollChrome(_list, _listScroll);
 
         _ctxMenu = new BrowseContextMenu();
         _ctxMenu.OpenRequested += delegate { ActivateSelected(); };
@@ -327,7 +333,9 @@ internal sealed class BrowseForm : Form
         _chrome.Controls.Add(_upBtn);
         _chrome.Controls.Add(_backBtn);
 
+        // Higher z-order docks first: scrollbar Right, then list Fill into remainder.
         _content.Controls.Add(_list);
+        _content.Controls.Add(_listScroll);
 
         Controls.Add(_content);
         Controls.Add(_status);
@@ -361,9 +369,10 @@ internal sealed class BrowseForm : Form
     {
         base.OnHandleCreated(e);
         ChromeVisual.PreferDarkMode(Handle);
-        ChromeVisual.PreferDarkScrollBars(this);
-        if (_list != null && _list.IsHandleCreated)
-            ChromeVisual.PreferDarkScrollBars(_list);
+        if (_listScroll != null)
+            _listScroll.Width = Math.Max(8, Px(ChromeLayout.ChromeScrollWidthDip));
+        if (_listScrollChrome != null)
+            _listScrollChrome.SyncFromList();
         Remeasure();
         ShellChrome.Pin(Handle);
     }
@@ -371,6 +380,8 @@ internal sealed class BrowseForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         CloseViewMenu();
+        if (_listScrollChrome != null)
+            _listScrollChrome.Dispose();
         if (_uiFont != null) { _uiFont.Dispose(); _uiFont = null; }
         if (_tileFont != null) { _tileFont.Dispose(); _tileFont = null; }
         if (_metaFont != null) { _metaFont.Dispose(); _metaFont = null; }
@@ -412,6 +423,8 @@ internal sealed class BrowseForm : Form
         _chrome.Height = chromeH;
         _status.Height = Px(30);
         _content.Padding = new Padding(Px(12), Px(10), Px(12), Px(6));
+        if (_listScroll != null)
+            _listScroll.Width = Math.Max(8, Px(ChromeLayout.ChromeScrollWidthDip));
 
         if (_uiFont != null) _uiFont.Dispose();
         if (_tileFont != null) _tileFont.Dispose();
@@ -1695,6 +1708,8 @@ internal sealed class BrowseForm : Form
         _list.EndUpdate();
         ApplyTileMetrics();
         LayoutDetailColumns();
+        if (_listScrollChrome != null)
+            _listScrollChrome.SyncFromList();
     }
 
     private static bool PassesFilter(DirEntry entry, string filter)
