@@ -5,7 +5,7 @@ using System.Drawing;
 using System.Windows.Forms;
 
 /// <summary>
-/// Owns rail + Pins flyout + Recent panel + browse pane.
+/// Owns rail + Pins flyout + Recent flyout + browse pane.
 /// Click semantics live in PinSession (unit-tested).
 ///
 /// LOCK — left appearance (do not regress):
@@ -27,7 +27,7 @@ internal sealed class ShellHost : ApplicationContext
     private readonly RailForm _rail;
     private readonly BrowseForm _pane;
     private readonly PinsFlyoutForm _flyout;
-    private readonly RecentPanelForm _recent;
+    private readonly RecentFlyoutForm _recent;
     private readonly System.Windows.Forms.Timer _tick;
     private readonly NotifyIcon _tray;
     private readonly ContextMenuStrip _trayMenu;
@@ -48,7 +48,7 @@ internal sealed class ShellHost : ApplicationContext
         _rail = new RailForm(this);
         _pane = new BrowseForm(this);
         _flyout = new PinsFlyoutForm(this);
-        _recent = new RecentPanelForm(this);
+        _recent = new RecentFlyoutForm(this);
 
         _trayMenu = new ContextMenuStrip();
         _trayMenu.Items.Add("Show", null, delegate { NoteActivity(); Place(true, true); });
@@ -110,14 +110,14 @@ internal sealed class ShellHost : ApplicationContext
     public void OnRecentClicked()
     {
         _session.ToggleRecent();
-        if (_session.RecentPanelOpen)
-            RefreshRecentPanel(true);
+        if (_session.RecentFlyoutOpen)
+            RefreshRecentFlyout(true);
         ApplySessionToChrome();
         SetPaneVisible(_session.PaneOpen);
         Place(_shown, true);
     }
 
-    public void CloseRecentPanel()
+    public void CloseRecentFlyout()
     {
         _session.CloseRecent();
         ApplySessionToChrome();
@@ -327,13 +327,13 @@ internal sealed class ShellHost : ApplicationContext
         {
             _rail.SetActivePlace(-1);
             _rail.SetPinsSelected(_session.PinsFlyoutOpen);
-            _rail.SetRecentSelected(_session.RecentPanelOpen);
+            _rail.SetRecentSelected(_session.RecentFlyoutOpen);
         }
 
         string activePath = _session.ActiveKind == PinSessionActive.Pin ? _session.ActivePath : null;
-        if (_session.RecentPanelOpen)
-            RefreshRecentPanel(false);
-        else
+        if (_session.RecentFlyoutOpen)
+            RefreshRecentFlyout(false);
+        if (_session.PinsFlyoutOpen)
         {
             _flyout.SetEntries(_pins.List(), activePath);
             _flyout.Remeasure();
@@ -341,7 +341,7 @@ internal sealed class ShellHost : ApplicationContext
         _pane.SyncPinChrome();
     }
 
-    private void RefreshRecentPanel(bool force)
+    private void RefreshRecentFlyout(bool force)
     {
         int now = Environment.TickCount;
         if (!force && (now - _recentRefreshTick) < RecentRefreshMs && _recentRefreshTick != 0)
@@ -355,8 +355,7 @@ internal sealed class ShellHost : ApplicationContext
 
     private void ResetToDefault()
     {
-        if (!_session.PaneOpen && !_session.FlyoutOpen && !_session.RecentPanelOpen
-            && _session.ActiveKind == PinSessionActive.None)
+        if (!_session.PaneOpen && !_session.FlyoutOpen && _session.ActiveKind == PinSessionActive.None)
             return;
         _session.IdleReset();
         ApplySessionToChrome();
@@ -385,28 +384,28 @@ internal sealed class ShellHost : ApplicationContext
             bool inside = _shown && _rail.Bounds.Contains(pt);
             bool onPane = _shown && _session.PaneOpen && _pane.Opacity > 0.05
                 && _pane.Left > -10000 && _pane.Bounds.Contains(pt);
-            bool onFlyout = _shown && _session.FlyoutOpen && _flyout.Opacity > 0.05
+            bool onPins = _shown && _session.PinsFlyoutOpen && _flyout.Opacity > 0.05
                 && _flyout.Left > -10000 && _flyout.Bounds.Contains(pt);
-            bool onRecent = _shown && _session.RecentPanelOpen && _recent.Opacity > 0.05
+            bool onRecent = _shown && _session.RecentFlyoutOpen && _recent.Opacity > 0.05
                 && _recent.Left > -10000 && _recent.Bounds.Contains(pt);
             bool edgeBridge = _shown
                 && pt.X >= screen.Left && pt.X < _rail.Left
                 && pt.Y >= _rail.Top && pt.Y <= _rail.Bottom;
-            bool pointerOnUs = inside || onPane || onFlyout || onRecent || edgeBridge;
+            bool pointerOnUs = inside || onPane || onPins || onRecent || edgeBridge;
             bool pressing = (Control.MouseButtons & MouseButtons.Left) == MouseButtons.Left && pointerOnUs;
 
             ShellView view = ShellChrome.Decide(ShellEdge.Left, pointerOnUs, pressing, false);
             if (view == ShellView.Park)
             {
-                if (_session.FlyoutOpen || _session.RecentPanelOpen)
+                if (_session.FlyoutOpen)
                     _session.OnPark();
                 Place(false, false);
             }
             else
                 Place(true, view == ShellView.Reveal);
 
-            if (_shown && _session.RecentPanelOpen)
-                RefreshRecentPanel(false);
+            if (_shown && _session.RecentFlyoutOpen)
+                RefreshRecentFlyout(false);
 
             if (_rail.IsHandleCreated)
                 ShellChrome.PinSoon(_rail.Handle);
@@ -447,9 +446,9 @@ internal sealed class ShellHost : ApplicationContext
             ShellChrome.RestoreIfIconic(_rail.Handle);
         if (show && _session.PaneOpen && _pane.IsHandleCreated)
             ShellChrome.RestoreIfIconic(_pane.Handle);
-        if (show && _session.FlyoutOpen && _flyout.IsHandleCreated)
+        if (show && _session.PinsFlyoutOpen && _flyout.IsHandleCreated)
             ShellChrome.RestoreIfIconic(_flyout.Handle);
-        if (show && _session.RecentPanelOpen && _recent.IsHandleCreated)
+        if (show && _session.RecentFlyoutOpen && _recent.IsHandleCreated)
             ShellChrome.RestoreIfIconic(_recent.Handle);
 
         bool railMoved = _shown != show
@@ -490,36 +489,13 @@ internal sealed class ShellHost : ApplicationContext
                 _pane.Opacity = 0.0;
         }
 
-        bool recentOpen = _session.RecentPanelOpen;
-        if (recentOpen && show)
-        {
-            if (_recent.Bounds != paneHome)
-                _recent.Bounds = paneHome;
-            if (!_recent.Visible)
-                _recent.Visible = true;
-            if (_recent.Opacity < ChromeVisual.PanelOpacity - 0.01)
-                _recent.Opacity = ChromeVisual.PanelOpacity;
-        }
-        else if (recentOpen && !show)
-        {
-            Rectangle parkedRecent = new Rectangle(Offscreen, paneHome.Top, paneHome.Width, paneHome.Height);
-            if (_recent.Bounds != parkedRecent)
-                _recent.Bounds = parkedRecent;
-        }
-        else
-        {
-            if (_recent.Left > -10000)
-                _recent.Bounds = new Rectangle(Offscreen, Offscreen, paneHome.Width, paneHome.Height);
-            if (_recent.Opacity > 0.01)
-                _recent.Opacity = 0.0;
-        }
+        int gap = DisplayScale.Px(ChromeLayout.PinsFlyoutGapDip, dpi, fit);
+        int edgeClear = DisplayScale.Px(ChromeLayout.EdgeClearDip, dpi, fit);
+        int topClear = DisplayScale.Px(ChromeLayout.TopClearDip, dpi, fit);
 
-        bool fly = show && _session.FlyoutOpen;
-        if (fly)
+        bool pinsFly = show && _session.PinsFlyoutOpen;
+        if (pinsFly)
         {
-            int gap = DisplayScale.Px(ChromeLayout.PinsFlyoutGapDip, dpi, fit);
-            int edgeClear = DisplayScale.Px(ChromeLayout.EdgeClearDip, dpi, fit);
-            int topClear = DisplayScale.Px(ChromeLayout.TopClearDip, dpi, fit);
             int fw = _flyout.Width > 0 ? _flyout.Width : DisplayScale.Px(ChromeLayout.PinsFlyoutWidthDip, dpi, fit);
             int fh = _flyout.DesiredHeight();
             int fx = railLeft + railHome.Width + gap;
@@ -544,6 +520,33 @@ internal sealed class ShellHost : ApplicationContext
                 _flyout.Opacity = 0.0;
         }
 
+        bool recentFly = show && _session.RecentFlyoutOpen;
+        if (recentFly)
+        {
+            int fw = _recent.Width > 0 ? _recent.Width : DisplayScale.Px(ChromeLayout.RecentFlyoutWidthDip, dpi, fit);
+            int fh = _recent.DesiredHeight();
+            int fx = railLeft + railHome.Width + gap;
+            int fy = Math.Max(railTop, screen.Top + topClear);
+            if (fy + fh > screen.Bottom - edgeClear)
+                fy = Math.Max(screen.Top + topClear, screen.Bottom - fh - edgeClear);
+            if (fx + fw > screen.Right - edgeClear)
+                fx = Math.Max(railLeft + railHome.Width + gap, screen.Right - fw - edgeClear);
+            Rectangle wantRecent = new Rectangle(fx, fy, fw, fh);
+            if (_recent.Bounds != wantRecent)
+                _recent.Bounds = wantRecent;
+            if (_recent.Opacity < ChromeVisual.PanelOpacity - 0.01)
+                _recent.Opacity = ChromeVisual.PanelOpacity;
+            if (!_recent.Visible)
+                _recent.Visible = true;
+        }
+        else
+        {
+            if (_recent.Left > -10000)
+                _recent.Bounds = new Rectangle(Offscreen, Offscreen, _recent.Width, _recent.Height);
+            if (_recent.Opacity > 0.01)
+                _recent.Opacity = 0.0;
+        }
+
         // Rail = QuickView's single panel: reassert every shown tick.
         // Pane/flyout are large — every-tick NOTOPMOST fights JD/QV. Assert them every
         // tick only while Reveal (topmost); on Rest only when show/open/topmost changes.
@@ -551,8 +554,8 @@ internal sealed class ShellHost : ApplicationContext
             ShellChrome.ZOrder(_rail.Handle, topmost);
 
         bool wantPaneZ = show && paneOpen;
-        bool wantFlyZ = fly;
-        bool wantRecentZ = show && recentOpen;
+        bool wantFlyZ = pinsFly;
+        bool wantRecentZ = recentFly;
         bool auxChanged = show != _placedShow
             || topmost != _placedTopmost
             || wantPaneZ != _placedPaneZ

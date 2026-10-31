@@ -131,7 +131,7 @@ internal static class PinSessionTests
         bool ok = s.OpenRecentPath(dir);
         Expect(ok, "open recent folder");
         Expect(s.LastRecentActivate == RecentActivateKind.Folder, "kind folder");
-        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "recent panel closed");
+        Expect(!s.RecentFlyoutOpen && !s.FlyoutOpen, "recent closed");
         Expect(s.PaneOpen, "pane open");
         Expect(PathsEqual(s.ActivePath, dir), "path");
     }
@@ -146,7 +146,7 @@ internal static class PinSessionTests
         Expect(ok, "open recent file");
         Expect(s.LastRecentActivate == RecentActivateKind.File, "kind file");
         Expect(PathsEqual(s.LastRecentPath, file), "launch path");
-        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "recent panel closed");
+        Expect(!s.RecentFlyoutOpen && !s.FlyoutOpen, "recent closed");
         Expect(!s.PaneOpen, "pane stays closed for file");
     }
 
@@ -219,9 +219,9 @@ internal static class PinSessionTests
         s.OpenPin(dir);
         Expect(s.PaneOpen && !s.FlyoutOpen, "setup");
         s.ToggleRecent();
-        Expect(s.RecentPanelOpen, "recent panel");
+        Expect(s.RecentFlyoutOpen, "recent flyout");
         s.IdleReset();
-        Expect(!s.FlyoutOpen && !s.RecentPanelOpen, "idle closes pins/recent");
+        Expect(!s.FlyoutOpen && !s.RecentFlyoutOpen, "idle closes flyouts");
         Expect(!s.PaneOpen, "idle closes pane");
         Expect(s.ActiveKind == PinSessionActive.None, "idle clears active");
     }
@@ -230,9 +230,9 @@ internal static class PinSessionTests
     {
         PinSession s = NewSession();
         s.ToggleRecent();
-        Expect(s.RecentPanelOpen, "open");
+        Expect(s.RecentFlyoutOpen, "open");
         s.OnPark();
-        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "park closes recent");
+        Expect(!s.RecentFlyoutOpen && !s.FlyoutOpen, "park closes recent");
     }
 
     private static void ActivityNotes()
