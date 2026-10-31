@@ -110,6 +110,7 @@ Run-Suite "RecentSourceTests" @(
 ) "RecentSourceTests.exe" $core
 
 Run-Suite "ShellFileOpsTests" @(
+    (Join-Path $srcDir "FileCopy.cs"),
     (Join-Path $srcDir "ShellFileOps.cs"),
     (Join-Path $testsDir "ShellFileOpsTests.cs")
 ) "ShellFileOpsTests.exe" $drawing
@@ -147,5 +148,15 @@ Run-Suite "SendToCatalogTests" @(
     (Join-Path $srcDir "SendToCatalog.cs"),
     (Join-Path $testsDir "SendToCatalogTests.cs")
 ) "SendToCatalogTests.exe" $core
+
+Run-Suite "OpenInCatalogTests" @(
+    (Join-Path $srcDir "OpenInCatalog.cs"),
+    (Join-Path $testsDir "OpenInCatalogTests.cs")
+) "OpenInCatalogTests.exe" $core
+
+Run-Suite "ArchiveCatalogTests" @(
+    (Join-Path $srcDir "ArchiveCatalog.cs"),
+    (Join-Path $testsDir "ArchiveCatalogTests.cs")
+) "ArchiveCatalogTests.exe" $core
 
 Write-Host "All tests passed." -ForegroundColor Green

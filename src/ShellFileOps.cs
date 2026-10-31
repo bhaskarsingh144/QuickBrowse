@@ -1,7 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Windows.Forms;
 
 /// <summary>Safe shell file helpers (no IContextMenu).</summary>
@@ -161,6 +164,210 @@ internal static class ShellFileOps
         {
             error = ex.Message;
             return null;
+        }
+    }
+
+    public static string Duplicate(string path, out string error)
+    {
+        error = null;
+        if (string.IsNullOrEmpty(path))
+        {
+            error = "Nothing to duplicate.";
+            return null;
+        }
+        try
+        {
+            string parent = Path.GetDirectoryName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrEmpty(parent))
+            {
+                error = "Cannot duplicate here.";
+                return null;
+            }
+            return FileCopy.CopyInto(parent, path, out error);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    public static string CreateShortcut(string targetPath, out string error)
+    {
+        error = null;
+        if (string.IsNullOrEmpty(targetPath))
+        {
+            error = "Nothing to link.";
+            return null;
+        }
+        try
+        {
+            bool isDir = Directory.Exists(targetPath);
+            if (!isDir && !File.Exists(targetPath))
+            {
+                error = "Item not found.";
+                return null;
+            }
+            string parent = Path.GetDirectoryName(targetPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            string baseName = Path.GetFileName(targetPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(baseName))
+            {
+                error = "Cannot create shortcut here.";
+                return null;
+            }
+            string lnk = Path.Combine(parent, baseName + ".lnk");
+            int n = 2;
+            while (File.Exists(lnk))
+            {
+                lnk = Path.Combine(parent, baseName + " (" + n + ").lnk");
+                n++;
+            }
+            Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType == null)
+            {
+                error = "Shortcut helper unavailable.";
+                return null;
+            }
+            object shell = Activator.CreateInstance(shellType);
+            object shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { lnk });
+            Type shortcutType = shortcut.GetType();
+            shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
+            if (isDir)
+                shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { targetPath });
+            else
+            {
+                string work = Path.GetDirectoryName(targetPath) ?? "";
+                shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { work });
+            }
+            shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { baseName });
+            shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+            return lnk;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    public static string Sha256Hex(string filePath, out string error)
+    {
+        error = null;
+        if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+        {
+            error = "File not found.";
+            return null;
+        }
+        try
+        {
+            using (FileStream fs = File.OpenRead(filePath))
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(fs);
+                StringBuilder sb = new StringBuilder(hash.Length * 2);
+                for (int i = 0; i < hash.Length; i++)
+                    sb.Append(hash[i].ToString("x2"));
+                return sb.ToString();
+            }
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    public static bool RunAsAdministrator(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            return false;
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = path,
+                Verb = "runas",
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public static bool OpenTerminalHere(string folderPath, string kind)
+    {
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+            return false;
+        kind = (kind ?? "wt").ToLowerInvariant();
+        try
+        {
+            if (kind == "wt")
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "wt.exe",
+                    Arguments = "-d \"" + folderPath + "\"",
+                    UseShellExecute = true
+                });
+                return true;
+            }
+            if (kind == "powershell")
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoExit -Command \"Set-Location -LiteralPath '" + folderPath.Replace("'", "''") + "'\"",
+                    WorkingDirectory = folderPath,
+                    UseShellExecute = false
+                });
+                return true;
+            }
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/k cd /d \"" + folderPath + "\"",
+                WorkingDirectory = folderPath,
+                UseShellExecute = false
+            });
+            return true;
+        }
+        catch
+        {
+            if (kind == "wt")
+                return OpenTerminalHere(folderPath, "powershell");
+            return false;
+        }
+    }
+
+    public static bool CreateTextDocument(string folderPath, out string createdPath, out string error)
+    {
+        createdPath = null;
+        error = null;
+        if (string.IsNullOrEmpty(folderPath) || !Directory.Exists(folderPath))
+        {
+            error = "Folder not available.";
+            return false;
+        }
+        try
+        {
+            string path = Path.Combine(folderPath, "New Text Document.txt");
+            int n = 2;
+            while (File.Exists(path))
+            {
+                path = Path.Combine(folderPath, "New Text Document (" + n + ").txt");
+                n++;
+            }
+            File.WriteAllText(path, "", Encoding.UTF8);
+            createdPath = path;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
         }
     }
 
