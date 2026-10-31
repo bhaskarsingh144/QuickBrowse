@@ -288,7 +288,6 @@ internal sealed class BrowseForm : Form
         _list.DrawSubItem += OnListDrawSubItem;
         _list.DrawColumnHeader += OnListDrawColumnHeader;
         _list.ColumnClick += OnColumnClick;
-        _list.MouseClick += OnListMouseClick;
         _list.MouseMove += OnListMouseMove;
         _list.MouseLeave += OnListMouseLeave;
         _list.KeyDown += OnListKeyDown;
@@ -2169,22 +2168,22 @@ internal sealed class BrowseForm : Form
         e.DrawDefault = false;
     }
 
-    private void OnListMouseClick(object sender, MouseEventArgs e)
-    {
-        _session.NoteActivity();
-        if (e.Button != MouseButtons.Left)
-            return;
-        ListViewItem item = FindItemAtPoint(e.Location);
-        if (item == null)
-            return;
-        _list.SelectedItems.Clear();
-        item.Selected = true;
-        ActivateEntry(item.Tag as DirEntry);
-    }
-
     private void OnListMouseUp(object sender, MouseEventArgs e)
     {
         _session.NoteActivity();
+        // MouseClick often only fires on the icon/label; tile padding still paints hover via Bounds.
+        // Use MouseUp + full-cell hit-test so the entire hover indicator opens the item.
+        if (e.Button == MouseButtons.Left)
+        {
+            ListViewItem leftHit = FindItemAtPoint(e.Location);
+            if (leftHit == null)
+                return;
+            _list.SelectedItems.Clear();
+            leftHit.Selected = true;
+            ActivateEntry(leftHit.Tag as DirEntry);
+            return;
+        }
+
         if (e.Button != MouseButtons.Right)
             return;
 
