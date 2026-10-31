@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -13,13 +14,28 @@ internal sealed class RecentEntry
     public DateTime LastAccessUtc;
 }
 
+internal enum RecentDateBucket
+{
+    Today,
+    Yesterday,
+    EarlierThisWeek,
+    Older
+}
+
+internal sealed class RecentBucketGroup
+{
+    public RecentDateBucket Bucket;
+    public string Title;
+    public List<RecentEntry> Entries;
+}
+
 /// <summary>
 /// Reads Windows Recent Items (FOLDERID_Recent .lnk shortcuts). Does not write into that folder
 /// except via SHAddToRecentDocs when QuickBrowse opens something.
 /// </summary>
 internal static class RecentSource
 {
-    public const int DefaultCap = 24;
+    public const int DefaultCap = 36;
 
     private const uint SHARD_PATHW = 0x00000003;
     private const uint STGM_READ = 0x00000000;
@@ -176,6 +192,9 @@ internal static class RecentSource
         }
     }
 
+    /// <summary>
+    /// Legacy pin-row mapping — drops timestamps. Prefer keeping RecentEntry for the Recent panel.
+    /// </summary>
     public static IList<PinEntry> ToPinEntries(IList<RecentEntry> recent)
     {
         List<PinEntry> list = new List<PinEntry>();
@@ -194,6 +213,111 @@ internal static class RecentSource
             });
         }
         return list;
+    }
+
+    public static RecentDateBucket BucketFor(DateTime lastAccessUtc, DateTime nowLocal)
+    {
+        DateTime local = lastAccessUtc.Kind == DateTimeKind.Utc
+            ? lastAccessUtc.ToLocalTime()
+            : DateTime.SpecifyKind(lastAccessUtc, DateTimeKind.Local);
+        DateTime today = nowLocal.Date;
+        DateTime day = local.Date;
+        if (day == today)
+            return RecentDateBucket.Today;
+        if (day == today.AddDays(-1))
+            return RecentDateBucket.Yesterday;
+
+        DayOfWeek first = CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        int delta = ((int)today.DayOfWeek - (int)first + 7) % 7;
+        DateTime weekStart = today.AddDays(-delta);
+        if (day >= weekStart && day < today.AddDays(-1))
+            return RecentDateBucket.EarlierThisWeek;
+        return RecentDateBucket.Older;
+    }
+
+    public static string BucketTitle(RecentDateBucket bucket)
+    {
+        switch (bucket)
+        {
+            case RecentDateBucket.Today: return "Today";
+            case RecentDateBucket.Yesterday: return "Yesterday";
+            case RecentDateBucket.EarlierThisWeek: return "Earlier this week";
+            default: return "Older";
+        }
+    }
+
+    /// <summary>
+    /// Groups newest-first entries into Today / Yesterday / Earlier this week / Older.
+    /// Empty buckets are omitted; order within each group is preserved.
+    /// </summary>
+    public static IList<RecentBucketGroup> GroupByDateBucket(IList<RecentEntry> entries)
+    {
+        return GroupByDateBucket(entries, DateTime.Now);
+    }
+
+    public static IList<RecentBucketGroup> GroupByDateBucket(IList<RecentEntry> entries, DateTime nowLocal)
+    {
+        List<RecentBucketGroup> groups = new List<RecentBucketGroup>();
+        if (entries == null || entries.Count == 0)
+            return groups;
+
+        RecentBucketGroup[] slots = new RecentBucketGroup[4];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            RecentEntry e = entries[i];
+            if (e == null || string.IsNullOrEmpty(e.Path))
+                continue;
+            RecentDateBucket bucket = BucketFor(e.LastAccessUtc, nowLocal);
+            int idx = (int)bucket;
+            if (slots[idx] == null)
+            {
+                slots[idx] = new RecentBucketGroup
+                {
+                    Bucket = bucket,
+                    Title = BucketTitle(bucket),
+                    Entries = new List<RecentEntry>()
+                };
+            }
+            slots[idx].Entries.Add(e);
+        }
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null && slots[i].Entries.Count > 0)
+                groups.Add(slots[i]);
+        }
+        return groups;
+    }
+
+    /// <summary>Relative / friendly stamp for tile meta (local display).</summary>
+    public static string FormatRelativeTime(DateTime lastAccessUtc, DateTime nowUtc)
+    {
+        DateTime accessUtc = lastAccessUtc.Kind == DateTimeKind.Utc
+            ? lastAccessUtc
+            : lastAccessUtc.ToUniversalTime();
+        DateTime now = nowUtc.Kind == DateTimeKind.Utc
+            ? nowUtc
+            : nowUtc.ToUniversalTime();
+        TimeSpan age = now - accessUtc;
+        if (age.TotalSeconds < 0)
+            age = TimeSpan.Zero;
+
+        if (age.TotalMinutes < 1)
+            return "Just now";
+        if (age.TotalMinutes < 60)
+            return ((int)age.TotalMinutes).ToString(CultureInfo.InvariantCulture) + "m ago";
+        if (age.TotalHours < 24 && accessUtc.ToLocalTime().Date == now.ToLocalTime().Date)
+            return ((int)age.TotalHours).ToString(CultureInfo.InvariantCulture) + "h ago";
+
+        DateTime local = accessUtc.ToLocalTime();
+        DateTime today = now.ToLocalTime().Date;
+        if (local.Date == today.AddDays(-1))
+            return "Yesterday " + local.ToString("h:mm tt", CultureInfo.CurrentCulture);
+        if (local.Date == today)
+            return local.ToString("h:mm tt", CultureInfo.CurrentCulture);
+        if (local.Year == today.Year)
+            return local.ToString("MMM d", CultureInfo.CurrentCulture);
+        return local.ToString("MMM d, yyyy", CultureInfo.CurrentCulture);
     }
 
     private static int CompareNewestFirst(RecentEntry a, RecentEntry b)

@@ -76,6 +76,16 @@ internal static class ChromeLayout
     public const int PinsFlyoutIconDip = 20;
     public const int PinsFlyoutPadDip = 8;
 
+    // Recent panel occupies the browse-pane slot (same home as PaneHome).
+    public const int RecentHeaderDip = 52;
+    public const int RecentPadDip = 16;
+    public const int RecentSectionGapDip = 18;
+    public const int RecentSectionHeaderDip = 28;
+    public const int RecentTileWidthDip = 120;
+    public const int RecentTileHeightDip = 112;
+    public const int RecentTileGapDip = 12;
+    public const int RecentTileIconDip = 52;
+
     public static float FontEm(float fit, float textFit)
     {
         float t = fit * textFit;

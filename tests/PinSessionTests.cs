@@ -92,7 +92,7 @@ internal static class PinSessionTests
         Expect(!s.PinsFlyoutOpen, "pins closed");
         Expect(!s.PaneOpen, "pane still closed");
         s.ToggleRecent();
-        Expect(!s.FlyoutOpen, "recent closes");
+        Expect(!s.RecentFlyoutOpen && !s.FlyoutOpen, "recent closes");
     }
 
     private static void RecentWhilePaneOpenClosesPane()
@@ -131,7 +131,7 @@ internal static class PinSessionTests
         bool ok = s.OpenRecentPath(dir);
         Expect(ok, "open recent folder");
         Expect(s.LastRecentActivate == RecentActivateKind.Folder, "kind folder");
-        Expect(!s.FlyoutOpen, "flyout closed");
+        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "recent panel closed");
         Expect(s.PaneOpen, "pane open");
         Expect(PathsEqual(s.ActivePath, dir), "path");
     }
@@ -146,7 +146,7 @@ internal static class PinSessionTests
         Expect(ok, "open recent file");
         Expect(s.LastRecentActivate == RecentActivateKind.File, "kind file");
         Expect(PathsEqual(s.LastRecentPath, file), "launch path");
-        Expect(!s.FlyoutOpen, "flyout closed");
+        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "recent panel closed");
         Expect(!s.PaneOpen, "pane stays closed for file");
     }
 
@@ -219,9 +219,9 @@ internal static class PinSessionTests
         s.OpenPin(dir);
         Expect(s.PaneOpen && !s.FlyoutOpen, "setup");
         s.ToggleRecent();
-        Expect(s.RecentFlyoutOpen, "recent flyout");
+        Expect(s.RecentPanelOpen, "recent panel");
         s.IdleReset();
-        Expect(!s.FlyoutOpen, "idle closes flyout");
+        Expect(!s.FlyoutOpen && !s.RecentPanelOpen, "idle closes pins/recent");
         Expect(!s.PaneOpen, "idle closes pane");
         Expect(s.ActiveKind == PinSessionActive.None, "idle clears active");
     }
@@ -230,9 +230,9 @@ internal static class PinSessionTests
     {
         PinSession s = NewSession();
         s.ToggleRecent();
-        Expect(s.FlyoutOpen, "open");
+        Expect(s.RecentPanelOpen, "open");
         s.OnPark();
-        Expect(!s.FlyoutOpen, "park closes flyout");
+        Expect(!s.RecentPanelOpen && !s.FlyoutOpen, "park closes recent");
     }
 
     private static void ActivityNotes()

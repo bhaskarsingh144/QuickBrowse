@@ -23,7 +23,7 @@ internal enum RecentActivateKind
 }
 
 /// <summary>
-/// Pure click / idle / park state for Pins/Recent flyouts + browse pane.
+/// Pure click / idle / park state for Pins flyout, Recent panel, and browse pane.
 /// ShellHost applies the resulting flags to chrome.
 /// </summary>
 internal sealed class PinSession
@@ -39,9 +39,12 @@ internal sealed class PinSession
     public PinStore Store { get { return _store; } }
 
     public FlyoutKind FlyoutKind { get; private set; }
-    public bool FlyoutOpen { get { return FlyoutKind != FlyoutKind.None; } }
+    /// <summary>Pins slim flyout only — Recent uses the pane-slot panel.</summary>
+    public bool FlyoutOpen { get { return FlyoutKind == FlyoutKind.Pins; } }
     public bool PinsFlyoutOpen { get { return FlyoutKind == FlyoutKind.Pins; } }
-    public bool RecentFlyoutOpen { get { return FlyoutKind == FlyoutKind.Recent; } }
+    public bool RecentPanelOpen { get { return FlyoutKind == FlyoutKind.Recent; } }
+    /// <summary>Compat alias for RecentPanelOpen (tests / older call sites).</summary>
+    public bool RecentFlyoutOpen { get { return RecentPanelOpen; } }
     public bool PaneOpen { get; private set; }
     public PinSessionActive ActiveKind { get; private set; }
     public int ActivePlaceIndex { get; private set; }
@@ -120,6 +123,13 @@ internal sealed class PinSession
     public void CloseFlyout()
     {
         FlyoutKind = FlyoutKind.None;
+    }
+
+    public void CloseRecent()
+    {
+        NoteActivity();
+        if (FlyoutKind == FlyoutKind.Recent)
+            FlyoutKind = FlyoutKind.None;
     }
 
     public bool OpenPin(string path)

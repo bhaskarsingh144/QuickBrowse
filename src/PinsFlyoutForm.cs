@@ -2,17 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Diagnostics;
 using System.Windows.Forms;
 
-internal enum ListFlyoutMode
-{
-    Pins,
-    Recent
-}
-
 /// <summary>
-/// Compact list flyout beside the rail — Pins or Recent, same dense chrome.
+/// Compact Pins list flyout beside the rail.
 /// </summary>
 internal sealed class PinsFlyoutForm : Form
 {
@@ -22,7 +15,6 @@ internal sealed class PinsFlyoutForm : Form
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _openItem;
     private readonly ToolStripMenuItem _unpinItem;
-    private readonly ToolStripMenuItem _explorerItem;
     private readonly ToolTip _tip;
     private Font _labelFont;
     private Font _emptyFont;
@@ -31,7 +23,6 @@ internal sealed class PinsFlyoutForm : Form
     private int _hot = -1;
     private int _active = -1;
     private int _menuIndex = -1;
-    private ListFlyoutMode _mode = ListFlyoutMode.Pins;
 
     public PinsFlyoutForm(ShellHost session)
     {
@@ -54,13 +45,9 @@ internal sealed class PinsFlyoutForm : Form
         _menu = new ContextMenuStrip();
         _openItem = new ToolStripMenuItem("Open", null, delegate { OpenMenuEntry(); });
         _unpinItem = new ToolStripMenuItem("Unpin", null, delegate { UnpinMenuEntry(); });
-        _explorerItem = new ToolStripMenuItem("Show in Explorer", null, delegate { ShowInExplorerMenu(); });
         _menu.Items.Add(_openItem);
         _menu.Items.Add(_unpinItem);
-        _menu.Items.Add(_explorerItem);
     }
-
-    public ListFlyoutMode Mode { get { return _mode; } }
 
     protected override bool ShowWithoutActivation { get { return true; } }
 
@@ -125,18 +112,8 @@ internal sealed class PinsFlyoutForm : Form
         Invalidate();
     }
 
-    public void SetMode(ListFlyoutMode mode)
-    {
-        _mode = mode;
-        Text = mode == ListFlyoutMode.Recent ? "QuickBrowse Recent" : "QuickBrowse Pins";
-        _unpinItem.Visible = mode == ListFlyoutMode.Pins;
-        _explorerItem.Visible = mode == ListFlyoutMode.Recent;
-        Invalidate();
-    }
-
     public void SetPins(IList<PinEntry> pins, string activePath)
     {
-        SetMode(ListFlyoutMode.Pins);
         SetEntries(pins, activePath);
     }
 
@@ -219,11 +196,8 @@ internal sealed class PinsFlyoutForm : Form
                     Px(12),
                     Math.Max(8, Width - Px(20)),
                     Height - Px(24));
-                string empty = _mode == ListFlyoutMode.Recent
-                    ? "No recent items yet"
-                    : "No pins yet — open a folder and pin it";
                 TextRenderer.DrawText(g,
-                    empty,
+                    "No pins yet — open a folder and pin it",
                     _emptyFont,
                     r,
                     UiTheme.TextSecondary,
@@ -297,8 +271,6 @@ internal sealed class PinsFlyoutForm : Form
         else if (e.Button == MouseButtons.Right)
         {
             _menuIndex = index;
-            _unpinItem.Visible = _mode == ListFlyoutMode.Pins;
-            _explorerItem.Visible = _mode == ListFlyoutMode.Recent;
             _menu.Show(this, e.Location);
         }
     }
@@ -314,11 +286,7 @@ internal sealed class PinsFlyoutForm : Form
     {
         if (index < 0 || index >= _entries.Count)
             return;
-        string path = _entries[index].Path;
-        if (_mode == ListFlyoutMode.Recent)
-            _session.OnRecentItemClicked(path);
-        else
-            _session.OnPinClicked(path);
+        _session.OnPinClicked(_entries[index].Path);
     }
 
     private void OpenMenuEntry()
@@ -330,20 +298,6 @@ internal sealed class PinsFlyoutForm : Form
     {
         if (_menuIndex >= 0 && _menuIndex < _entries.Count)
             _session.OnUnpinPath(_entries[_menuIndex].Path);
-    }
-
-    private void ShowInExplorerMenu()
-    {
-        if (_menuIndex < 0 || _menuIndex >= _entries.Count)
-            return;
-        string path = _entries[_menuIndex].Path;
-        try
-        {
-            Process.Start("explorer.exe", "/select,\"" + path + "\"");
-        }
-        catch
-        {
-        }
     }
 
     private int HitIndex(Point pt)
