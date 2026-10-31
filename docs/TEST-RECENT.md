@@ -4,32 +4,33 @@ Run `scripts\test.ps1` then `scripts\build.ps1` / launch `bin\QuickBrowse.exe`.
 
 **Source:** Windows Recent Items (`%AppData%\Microsoft\Windows\Recent`). Executables are filtered (OS + QB). Not recent apps.
 
+**UI:** Dense list flyout beside the rail (Pins-like), with date section headers, relative time on each row, and scroll when tall. Not a pane-sized icon grid.
+
 ## Automated gate
 
-- [ ] `scripts\test.ps1` — includes RecentSourceTests + updated PinSessionTests
+- [ ] `scripts\test.ps1` — RecentSourceTests (buckets, relative time, cap) + PinSessionTests
 
 ## Rail
 
 - [ ] Top chips are **Pins** then **Recent**, then system places
-- [ ] Pins tooltip “Pinned folders”; Recent “Recent files and folders”
-- [ ] Pins and Recent are mutually exclusive (opening one closes the other)
-- [ ] Opening either closes the Explorer pane first (flyout not buried)
+- [ ] Pins and Recent are mutually exclusive
+- [ ] Opening either closes the Explorer pane first
 
 ## Recent list
 
-- [ ] Open a document in Explorer (or in QB) → appears in Recent (may need up to ~5s while flyout open, or re-open Recent)
-- [ ] Folder from Recent → opens in pane; flyout closes
-- [ ] File from Recent → opens with default app; flyout closes; pane stays closed unless already open
-- [ ] Empty state readable when nothing recent
-- [ ] No `.exe` entries
-- [ ] Right-click Recent row → Open / Show in Explorer
+- [ ] Flyout sits beside the rail (wider than Pins); not the browse-pane slot
+- [ ] Sections: **Today** / **Yesterday** / **Earlier this week** / **Older** as needed
+- [ ] Each row: shell icon + title + relative time (right); tooltip = full path
+- [ ] Scroll works cleanly (no smear / stuck headers)
+- [ ] Folder → pane; file → default app; flyout closes
+- [ ] Empty state readable; no `.exe` entries
+- [ ] Right-click → Open / Show in Explorer / Copy path
 
 ## Pins regression
 
-- [ ] Pins chip still lists pins; Open / Unpin; pin toolbar still works
+- [ ] Pins chip still slim list; Open / Unpin
 
 ## Coexistence
 
-- [ ] Idle ~30s closes Recent flyout
-- [ ] Park hides flyout; left-edge reveal still works
+- [ ] Idle ~30s / park / Esc close Recent
 - [ ] QuickView / JumpDock unaffected

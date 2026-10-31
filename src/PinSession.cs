@@ -122,6 +122,19 @@ internal sealed class PinSession
         FlyoutKind = FlyoutKind.None;
     }
 
+    public void CloseRecent()
+    {
+        NoteActivity();
+        if (FlyoutKind == FlyoutKind.Recent)
+            FlyoutKind = FlyoutKind.None;
+    }
+
+    /// <summary>Alias used by Recent flyout Esc / host close.</summary>
+    public void CloseRecentFlyout()
+    {
+        CloseRecent();
+    }
+
     public bool OpenPin(string path)
     {
         NoteActivity();
