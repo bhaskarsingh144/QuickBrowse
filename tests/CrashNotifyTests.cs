@@ -17,6 +17,7 @@ internal static class CrashNotifyTests
             SessionLifecycleClearsFlag();
             UnackedFatalUntilAck();
             SummarizeReadsTypeAndMessage();
+            DynamicTitlesAndBodies();
         }
         finally
         {
@@ -67,6 +68,20 @@ internal static class CrashNotifyTests
         string s = CrashNotify.SummarizeLastFatal(400);
         Expect(s.IndexOf("InvalidOperationException", StringComparison.Ordinal) >= 0, "summary type");
         Expect(s.IndexOf("summary-boom", StringComparison.Ordinal) >= 0, "summary message");
+    }
+
+    private static void DynamicTitlesAndBodies()
+    {
+        Exception ex = new ArgumentException("bad font");
+        Expect(CrashNotify.ShortExceptionName(ex) == "Argument", "short name strips Exception");
+        Expect(CrashNotify.BuildFatalTitle(ex).IndexOf("Argument", StringComparison.Ordinal) >= 0, "fatal title");
+        string body = CrashNotify.BuildFatalBody(ex, @"C:\logs", false);
+        Expect(body.IndexOf("bad font", StringComparison.Ordinal) >= 0, "fatal body message");
+        Expect(body.IndexOf("restart", StringComparison.OrdinalIgnoreCase) >= 0, "fatal body restart");
+        string startCrash = CrashNotify.BuildStartupTitle(true, false);
+        Expect(startCrash.IndexOf("crash", StringComparison.OrdinalIgnoreCase) >= 0, "startup crash title");
+        string startUnclean = CrashNotify.BuildStartupTitle(false, true);
+        Expect(startUnclean.IndexOf("unexpectedly", StringComparison.OrdinalIgnoreCase) >= 0, "startup unclean title");
     }
 
     private static void Expect(bool cond, string name)

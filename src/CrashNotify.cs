@@ -1,18 +1,18 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows.Forms;
 
 /// <summary>
-/// Surfaces crashes / unclean exits to the user (MessageBox). Logging stays in CrashLog;
-/// this layer only decides when to alert and acknowledge.
+/// Surfaces crashes / unclean exits to the user and can relaunch QuickBrowse.
+/// Logging stays in CrashLog; titles/bodies are built from the event kind + exception.
 /// </summary>
 internal static class CrashNotify
 {
     private const string RunningFlagName = "session.running";
     private const string FatalAckName = "last-fatal.ack";
 
-    /// <summary>True when a previous run left the session.running flag (kill / hard crash).</summary>
     public static bool DetectUncleanPriorSession()
     {
         try
@@ -89,7 +89,85 @@ internal static class CrashNotify
         }
     }
 
-    /// <summary>First lines of last-fatal for dialog body (best-effort).</summary>
+    public static string ShortExceptionName(Exception ex)
+    {
+        if (ex == null)
+            return "Unknown error";
+        string name = ex.GetType().Name;
+        if (name.EndsWith("Exception", StringComparison.Ordinal) && name.Length > "Exception".Length)
+            name = name.Substring(0, name.Length - "Exception".Length);
+        if (string.IsNullOrEmpty(name))
+            return "Error";
+        return name;
+    }
+
+    public static string BuildFatalTitle(Exception ex)
+    {
+        return "QuickBrowse — " + ShortExceptionName(ex);
+    }
+
+    public static string FormatExceptionDetail(Exception ex)
+    {
+        string detail = ex != null
+            ? ex.GetType().Name + ": " + (ex.Message ?? "")
+            : "Unknown error";
+        if (detail.Length > 280)
+            detail = detail.Substring(0, 279) + "…";
+        return detail;
+    }
+
+    public static string BuildFatalBody(Exception ex, string logsDir, bool offerContinue)
+    {
+        string detail = FormatExceptionDetail(ex);
+        string actions = offerContinue
+            ? "Yes = restart QuickBrowse"
+                + Environment.NewLine + "No = keep this session (may be unstable)"
+                + Environment.NewLine + "Cancel = exit"
+            : "Yes = restart QuickBrowse"
+                + Environment.NewLine + "No = exit";
+
+        return "QuickBrowse hit a problem"
+            + (offerContinue ? "." : " and needs to stop.")
+            + Environment.NewLine + Environment.NewLine
+            + detail
+            + Environment.NewLine + Environment.NewLine
+            + "A report was saved under:"
+            + Environment.NewLine + (logsDir ?? "")
+            + Environment.NewLine + Environment.NewLine
+            + actions;
+    }
+
+    public static string BuildStartupTitle(bool unackedFatal, bool uncleanPrior)
+    {
+        if (unackedFatal)
+            return "QuickBrowse — previous crash";
+        if (uncleanPrior)
+            return "QuickBrowse — closed unexpectedly";
+        return "QuickBrowse";
+    }
+
+    public static string BuildStartupBody(bool unackedFatal, bool uncleanPrior, string logsDir)
+    {
+        if (unackedFatal)
+        {
+            string summary = SummarizeLastFatal(280);
+            return "QuickBrowse is starting again after a crash."
+                + Environment.NewLine + Environment.NewLine
+                + (string.IsNullOrEmpty(summary) ? "" : summary + Environment.NewLine + Environment.NewLine)
+                + "Report folder:"
+                + Environment.NewLine + (logsDir ?? "")
+                + Environment.NewLine + Environment.NewLine
+                + "Open the logs folder now?";
+        }
+
+        return "QuickBrowse closed unexpectedly last time (no crash report — often a force-quit or kill)."
+            + Environment.NewLine + Environment.NewLine
+            + "Session log:"
+            + Environment.NewLine + (logsDir ?? "")
+            + Environment.NewLine + Environment.NewLine
+            + "Open the logs folder now?";
+    }
+
     public static string SummarizeLastFatal(int maxChars)
     {
         if (maxChars < 40)
@@ -133,7 +211,6 @@ internal static class CrashNotify
         return Path.Combine(CrashLog.RootDir(), FatalAckName);
     }
 
-    /// <summary>Call once after deciding unclean/fatal flags, before or after Session start log.</summary>
     public static void ShowStartupIfNeeded(bool uncleanPrior, bool unackedFatal)
     {
         if (!uncleanPrior && !unackedFatal)
@@ -141,29 +218,8 @@ internal static class CrashNotify
         try
         {
             string logs = CrashLog.RootDir();
-            string title = "QuickBrowse";
-            string body;
-            if (unackedFatal)
-            {
-                string summary = SummarizeLastFatal(280);
-                body = "QuickBrowse crashed previously."
-                    + Environment.NewLine + Environment.NewLine
-                    + (string.IsNullOrEmpty(summary) ? "" : summary + Environment.NewLine + Environment.NewLine)
-                    + "A report was saved under:"
-                    + Environment.NewLine + logs
-                    + Environment.NewLine + Environment.NewLine
-                    + "Open the logs folder now?";
-            }
-            else
-            {
-                body = "QuickBrowse closed unexpectedly last time (no crash report was written — often a force-quit or kill)."
-                    + Environment.NewLine + Environment.NewLine
-                    + "Session log:"
-                    + Environment.NewLine + logs
-                    + Environment.NewLine + Environment.NewLine
-                    + "Open the logs folder now?";
-            }
-
+            string title = BuildStartupTitle(unackedFatal, uncleanPrior);
+            string body = BuildStartupBody(unackedFatal, uncleanPrior, logs);
             DialogResult r = MessageBox.Show(
                 body,
                 title,
@@ -181,39 +237,86 @@ internal static class CrashNotify
         }
     }
 
-    /// <summary>Immediate alert when an unhandled exception is logged.</summary>
-    public static void ShowFatalNow(Exception ex)
+    /// <summary>
+    /// Immediate alert after a fatal is logged. Offers restart (default) or exit.
+    /// Clears the running flag before relaunch so the new session is not flagged unclean.
+    /// </summary>
+    public static void ShowFatalNow(Exception ex, bool offerContinue)
     {
         try
         {
             string logs = CrashLog.RootDir();
-            string detail = ex != null
-                ? ex.GetType().Name + ": " + ex.Message
-                : "Unknown error";
-            if (detail.Length > 240)
-                detail = detail.Substring(0, 239) + "…";
-            string body = "QuickBrowse hit an error and may stop working."
-                + Environment.NewLine + Environment.NewLine
-                + detail
-                + Environment.NewLine + Environment.NewLine
-                + "A report was saved under:"
-                + Environment.NewLine + logs
-                + Environment.NewLine + Environment.NewLine
-                + "Open the logs folder now?";
-            DialogResult r = MessageBox.Show(
+            string title = BuildFatalTitle(ex);
+            string body = BuildFatalBody(ex, logs, offerContinue);
+            if (offerContinue)
+            {
+                DialogResult r = MessageBox.Show(
+                    body,
+                    title,
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Error,
+                    MessageBoxDefaultButton.Button1);
+                AcknowledgeFatal();
+                if (r == DialogResult.Yes)
+                    RestartApplication();
+                else if (r == DialogResult.Cancel)
+                    ExitApplication();
+                return;
+            }
+
+            DialogResult choice = MessageBox.Show(
                 body,
-                "QuickBrowse — crash",
+                title,
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Error,
-                MessageBoxDefaultButton.Button2);
-            if (r == DialogResult.Yes)
-                TryOpenLogsFolder(logs);
+                MessageBoxDefaultButton.Button1);
             AcknowledgeFatal();
+            if (choice == DialogResult.Yes)
+                RestartApplication();
+            else
+                ExitApplication();
         }
         catch
         {
             try { AcknowledgeFatal(); } catch { }
+            try { RestartApplication(); } catch { ExitApplication(); }
         }
+    }
+
+    public static void RestartApplication()
+    {
+        try
+        {
+            // Intentional relaunch — clear running flag so the new session is not "unclean".
+            MarkSessionEnded();
+            string exe = Application.ExecutablePath;
+            if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
+            {
+                // Delay start so this process can release the single-instance mutex first.
+                string quoted = "\"" + exe.Replace("\"", "") + "\"";
+                string args = "/c timeout /t 1 /nobreak >nul & start \"\" " + quoted;
+                Process.Start(new ProcessStartInfo("cmd.exe", args)
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    WorkingDirectory = Path.GetDirectoryName(exe) ?? ""
+                });
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            ExitApplication();
+        }
+    }
+
+    public static void ExitApplication()
+    {
+        try { MarkSessionEnded(); } catch { }
+        try { Application.Exit(); } catch { }
+        try { Environment.Exit(1); } catch { }
     }
 
     private static void TryOpenLogsFolder(string logs)
@@ -223,7 +326,7 @@ internal static class CrashNotify
             if (string.IsNullOrEmpty(logs))
                 return;
             Directory.CreateDirectory(logs);
-            System.Diagnostics.Process.Start("explorer.exe", logs);
+            Process.Start("explorer.exe", logs);
         }
         catch
         {

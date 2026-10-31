@@ -14,12 +14,12 @@ QuickBrowse keeps local diagnostics under:
 
 ## User notifications
 
-Logging alone is easy to miss. QuickBrowse also shows a **MessageBox**:
+Logging alone is easy to miss. QuickBrowse also shows a **MessageBox** with a dynamic title/body:
 
-1. **On crash (unhandled exception)** — error dialog with exception summary + “Open the logs folder?”
-2. **On next startup** — if the previous run left `session.running` (force-quit / kill) or an unacked `last-fatal.log`, a warning dialog explains what happened and can open the logs folder.
+1. **On crash (unhandled exception)** — title like `QuickBrowse — Argument` (from the exception type); body includes the message and log folder. Default action is **restart** (delayed so the single-instance mutex clears). UI-thread faults also offer **continue** or **exit**.
+2. **On next startup** — if the previous run left `session.running` (force-quit / kill) or an unacked `last-fatal.log`, a warning titled `QuickBrowse — previous crash` or `QuickBrowse — closed unexpectedly` can open the logs folder.
 
-Clean exits remove `session.running` and write `Session end` to `app.log`. Native / process-corrupting faults may still bypass managed logging and only leave the running flag.
+Clean exits and intentional restarts remove `session.running` and write `Session end` to `app.log`. Native / process-corrupting faults may still bypass managed logging and only leave the running flag.
 
 ## What is captured
 
