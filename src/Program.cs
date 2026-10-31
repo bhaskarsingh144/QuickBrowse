@@ -29,12 +29,17 @@ internal static class Program
                 return;
             EnsureStartup();
             CrashLog.EnsureReady();
+            bool uncleanPrior = CrashNotify.DetectUncleanPriorSession();
+            bool unackedFatal = CrashNotify.HasUnackedFatal();
+            CrashNotify.MarkSessionRunning();
             CrashLog.WriteInfo("Session start");
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += OnThreadException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandled;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // After visual styles so MessageBox matches app chrome; before Run so user sees it first.
+            CrashNotify.ShowStartupIfNeeded(uncleanPrior, unackedFatal);
             try
             {
                 Application.Run(new ShellHost());
@@ -46,6 +51,7 @@ internal static class Program
             }
             finally
             {
+                CrashNotify.MarkSessionEnded();
                 CrashLog.WriteInfo("Session end");
             }
         }
@@ -53,19 +59,26 @@ internal static class Program
 
     private static void OnThreadException(object sender, ThreadExceptionEventArgs e)
     {
-        // UI-thread unhandled: record a fatal marker; WinForms may keep running.
-        LogCrash(e.Exception);
+        // UI-thread unhandled: offer restart, continue, or exit.
+        LogCrash(e.Exception, true);
     }
 
     private static void OnUnhandled(object sender, UnhandledExceptionEventArgs e)
     {
-        LogCrash(e.ExceptionObject as Exception);
+        // Process is usually ending — restart or exit (no continue).
+        LogCrash(e.ExceptionObject as Exception, false);
     }
 
-    /// <summary>Unhandled / fatal — writes under %LOCALAPPDATA%\QuickBrowse\logs.</summary>
+    /// <summary>Unhandled / fatal — log, alert with dynamic title/body, optionally restart.</summary>
     internal static void LogCrash(Exception ex)
     {
+        LogCrash(ex, false);
+    }
+
+    internal static void LogCrash(Exception ex, bool offerContinue)
+    {
         CrashLog.WriteFatal(ex, "unhandled");
+        CrashNotify.ShowFatalNow(ex, offerContinue);
     }
 
     /// <summary>Recoverable error — appends to app.log only.</summary>

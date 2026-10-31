@@ -119,6 +119,12 @@ Run-Suite "CrashLogTests" @(
     (Join-Path $testsDir "CrashLogTests.cs")
 ) "CrashLogTests.exe" $core
 
+Run-Suite "CrashNotifyTests" @(
+    (Join-Path $srcDir "CrashLog.cs"),
+    (Join-Path $srcDir "CrashNotify.cs"),
+    (Join-Path $testsDir "CrashNotifyTests.cs")
+) "CrashNotifyTests.exe" $drawing
+
 $zipRefs = $core + @(
     (Join-Path $fw "System.IO.Compression.dll"),
     (Join-Path $fw "System.IO.Compression.FileSystem.dll")
