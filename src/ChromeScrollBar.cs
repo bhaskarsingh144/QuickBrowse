@@ -228,6 +228,19 @@ internal sealed class ChromeScrollBar : Control
         }
     }
 
+    protected override void OnMouseWheel(MouseEventArgs e)
+    {
+        base.OnMouseWheel(e);
+        int lines = SystemInformation.MouseWheelScrollLines;
+        if (lines <= 0)
+            lines = 3;
+        int step = Math.Max(1, _largeChange / 8);
+        int notches = e.Delta / 120;
+        if (notches == 0)
+            notches = e.Delta > 0 ? 1 : -1;
+        Value = _value - (notches * lines * step);
+    }
+
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
