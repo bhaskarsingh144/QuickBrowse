@@ -77,9 +77,13 @@ internal static class ChromeLayout
     public const int PinsFlyoutPadDip = 8;
 
     // Recent list flyout — same family as Pins, wider for timestamps + scroll.
-    public const int RecentFlyoutWidthDip = 280;
-    public const int RecentFlyoutMaxHeightDip = 420;
-    public const int RecentSectionHeaderDip = 22;
+    public const int RecentFlyoutWidthDip = 336;
+    public const int RecentFlyoutMaxHeightDip = 440;
+    public const int RecentFlyoutPadDip = 14;
+    public const int RecentSectionHeaderDip = 26;
+    public const int RecentSectionGapDip = 8;
+    /// <summary>QuickView-like thin custom scrollbar width.</summary>
+    public const int ChromeScrollWidthDip = 10;
 
     public static float FontEm(float fit, float textFit)
     {
