@@ -29,12 +29,17 @@ internal static class Program
                 return;
             EnsureStartup();
             CrashLog.EnsureReady();
+            bool uncleanPrior = CrashNotify.DetectUncleanPriorSession();
+            bool unackedFatal = CrashNotify.HasUnackedFatal();
+            CrashNotify.MarkSessionRunning();
             CrashLog.WriteInfo("Session start");
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException += OnThreadException;
             AppDomain.CurrentDomain.UnhandledException += OnUnhandled;
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // After visual styles so MessageBox matches app chrome; before Run so user sees it first.
+            CrashNotify.ShowStartupIfNeeded(uncleanPrior, unackedFatal);
             try
             {
                 Application.Run(new ShellHost());
@@ -46,6 +51,7 @@ internal static class Program
             }
             finally
             {
+                CrashNotify.MarkSessionEnded();
                 CrashLog.WriteInfo("Session end");
             }
         }
@@ -62,10 +68,11 @@ internal static class Program
         LogCrash(e.ExceptionObject as Exception);
     }
 
-    /// <summary>Unhandled / fatal — writes under %LOCALAPPDATA%\QuickBrowse\logs.</summary>
+    /// <summary>Unhandled / fatal — writes under %LOCALAPPDATA%\QuickBrowse\logs and alerts the user.</summary>
     internal static void LogCrash(Exception ex)
     {
         CrashLog.WriteFatal(ex, "unhandled");
+        CrashNotify.ShowFatalNow(ex);
     }
 
     /// <summary>Recoverable error — appends to app.log only.</summary>
