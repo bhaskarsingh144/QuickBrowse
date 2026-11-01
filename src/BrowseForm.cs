@@ -87,6 +87,9 @@ internal sealed class BrowseForm : Form
     private bool _sortAsc = true;
     private bool _listingLoading;
     private string _listingError;
+    private string _pendingSelectPath;
+    private int _pendingFocusIndex = -1;
+    private int _pendingFocusGen = -1;
     private int _hotIndex = -1;
     private int _tipIndex = -1;
     private Point _tipClientPt;
@@ -1173,6 +1176,7 @@ internal sealed class BrowseForm : Form
             string dest = UniqueNewFolderPath(_currentPath);
             Directory.CreateDirectory(dest);
             SetActionStatus("Created " + Path.GetFileName(dest));
+            QueueSelectPath(dest);
             ReloadCurrentListing();
         }
         catch (Exception ex)
@@ -1658,6 +1662,7 @@ internal sealed class BrowseForm : Form
             RebuildItemsFromCache();
             FinishListingStatus(_listingError);
             SyncListOverlay();
+            ApplyPendingFocus();
             SyncNavButtons();
             SyncActionButtons();
             return;
@@ -1668,6 +1673,7 @@ internal sealed class BrowseForm : Form
             RebuildItemsFromCache();
             FinishListingStatus(listing.Error);
             SyncListOverlay();
+            ApplyPendingFocus();
             SyncNavButtons();
             SyncActionButtons();
             return;
@@ -1680,8 +1686,62 @@ internal sealed class BrowseForm : Form
         RebuildItemsFromCache();
         FinishListingStatus(null);
         SyncListOverlay();
+        ApplyPendingFocus();
         SyncNavButtons();
         SyncActionButtons();
+    }
+
+    private void QueueSelectPath(string path)
+    {
+        _pendingSelectPath = path;
+        _pendingFocusIndex = -1;
+        // Next LoadListingAsync increments _loadGen first; match that generation.
+        _pendingFocusGen = _loadGen + 1;
+    }
+
+    private void QueueFocusIndex(int index)
+    {
+        _pendingSelectPath = null;
+        _pendingFocusIndex = index;
+        _pendingFocusGen = _loadGen + 1;
+    }
+
+    private void ApplyPendingFocus()
+    {
+        if (_pendingFocusGen != _loadGen)
+        {
+            _pendingSelectPath = null;
+            _pendingFocusIndex = -1;
+            _pendingFocusGen = -1;
+            return;
+        }
+        if (!string.IsNullOrEmpty(_pendingSelectPath))
+        {
+            string path = _pendingSelectPath;
+            _pendingSelectPath = null;
+            _pendingFocusIndex = -1;
+            _pendingFocusGen = -1;
+            SelectPathInList(path);
+            return;
+        }
+        if (_pendingFocusIndex < 0)
+        {
+            _pendingFocusGen = -1;
+            return;
+        }
+        int want = _pendingFocusIndex;
+        _pendingFocusIndex = -1;
+        _pendingFocusGen = -1;
+        int index = BrowseMutationFocus.NeighborIndexAfterDelete(want, _list.Items.Count);
+        if (index < 0)
+            return;
+        ClearListSelection();
+        ListViewItem item = _list.Items[index];
+        item.Selected = true;
+        item.Focused = true;
+        item.EnsureVisible();
+        SyncActionButtons();
+        UpdateSelectionStatus();
     }
 
     private void SyncListOverlay()
@@ -2704,9 +2764,9 @@ internal sealed class BrowseForm : Form
         if (!_thisPc && !string.IsNullOrEmpty(_currentPath)
             && string.Equals(Path.GetDirectoryName(lastDest), _currentPath, StringComparison.OrdinalIgnoreCase))
         {
-            ReloadCurrentListing();
             if (selected.Count == 1)
-                SelectPathInList(lastDest);
+                QueueSelectPath(lastDest);
+            ReloadCurrentListing();
         }
     }
 
@@ -2782,9 +2842,9 @@ internal sealed class BrowseForm : Form
                 SetActionStatus("Created " + Path.GetFileName(lastZip));
             else
                 SetActionStatus("Created " + ok + " archive(s)" + (firstError != null ? " (" + firstError + ")" : ""));
-            ReloadCurrentListing();
             if (selected.Count == 1)
-                SelectPathInList(lastZip);
+                QueueSelectPath(lastZip);
+            ReloadCurrentListing();
             return;
         }
         SetActionStatus("Compressing " + ok + (ok == 1 ? " item" : " items") + " with " + provider.Title + "…");
@@ -2817,8 +2877,8 @@ internal sealed class BrowseForm : Form
                 return;
             }
             SetActionStatus("Extracted to " + Path.GetFileName(folder));
+            QueueSelectPath(folder);
             ReloadCurrentListing();
-            SelectPathInList(folder);
             return;
         }
         ArchiveProvider provider = FindArchiveProvider(kind);
@@ -2941,8 +3001,8 @@ internal sealed class BrowseForm : Form
             return;
         }
         SetActionStatus("Duplicated " + Path.GetFileName(dest));
+        QueueSelectPath(dest);
         ReloadCurrentListing();
-        SelectPathInList(dest);
     }
 
     private void CreateShortcutSelected()
@@ -2958,8 +3018,8 @@ internal sealed class BrowseForm : Form
             return;
         }
         SetActionStatus("Created " + Path.GetFileName(lnk));
+        QueueSelectPath(lnk);
         ReloadCurrentListing();
-        SelectPathInList(lnk);
     }
 
     private void RunSelectedAsAdmin()
@@ -2989,8 +3049,8 @@ internal sealed class BrowseForm : Form
             return;
         }
         SetActionStatus("Created " + Path.GetFileName(created));
+        QueueSelectPath(created);
         ReloadCurrentListing();
-        SelectPathInList(created);
     }
 
     private static bool TryParseArchiveKind(string name, out ArchiveProviderKind kind)
@@ -3159,9 +3219,22 @@ internal sealed class BrowseForm : Form
         if (answer != DialogResult.Yes)
             return;
 
+        int firstIndex = -1;
+        if (_list.SelectedItems.Count > 0)
+        {
+            firstIndex = _list.SelectedItems[0].Index;
+            for (int i = 1; i < _list.SelectedItems.Count; i++)
+            {
+                int idx = _list.SelectedItems[i].Index;
+                if (idx < firstIndex)
+                    firstIndex = idx;
+            }
+        }
+
         if (ShellFileOps.SendToRecycleBin(Handle, paths))
         {
             SetActionStatus(doneStatus);
+            QueueFocusIndex(firstIndex);
             ReloadCurrentListing();
         }
         else
@@ -3209,14 +3282,15 @@ internal sealed class BrowseForm : Form
             return;
         }
         SetActionStatus("Renamed to " + Path.GetFileName(dest));
+        QueueSelectPath(dest);
         ReloadCurrentListing();
-        SelectPathInList(dest);
     }
 
     private void SelectPathInList(string path)
     {
         if (string.IsNullOrEmpty(path))
             return;
+        ClearListSelection();
         foreach (ListViewItem item in _list.Items)
         {
             DirEntry e = item.Tag as DirEntry;
@@ -3227,6 +3301,8 @@ internal sealed class BrowseForm : Form
             item.Selected = true;
             item.Focused = true;
             item.EnsureVisible();
+            SyncActionButtons();
+            UpdateSelectionStatus();
             return;
         }
     }
