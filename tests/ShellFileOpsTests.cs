@@ -8,6 +8,7 @@ internal static class ShellFileOpsTests
     private static void Main()
     {
         RecycleRejectsEmpty();
+        RecycleMultiJoin();
         RenameRejectsBadInput();
         RenameMovesFile();
         DuplicateFile();
@@ -21,8 +22,17 @@ internal static class ShellFileOpsTests
 
     private static void RecycleRejectsEmpty()
     {
-        Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, null), "recycle null path false");
+        Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, (string)null), "recycle null path false");
         Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, ""), "recycle empty path false");
+        Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, (string[])null), "recycle null array false");
+        Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, new string[0]), "recycle empty array false");
+        Expect(!ShellFileOps.SendToRecycleBin(IntPtr.Zero, new string[] { null, "" }), "recycle blank array false");
+    }
+
+    private static void RecycleMultiJoin()
+    {
+        string joined = ShellDragDrop.JoinPathsForShFileOp(new string[] { @"C:\a", @"C:\b" });
+        Expect(joined == "C:\\a\0C:\\b\0\0", "recycle multi join double null");
     }
 
     private static void RenameRejectsBadInput()

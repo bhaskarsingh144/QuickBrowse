@@ -34,6 +34,7 @@ internal sealed class BrowseForm : Form
     private readonly Label _filterGlyph;
     private readonly ChromeToolButton _newFolderBtn;
     private readonly ChromeToolButton _refreshBtn;
+    private readonly ChromeToolButton _multiSelectBtn;
     private readonly ChromeToolButton _cutBtn;
     private readonly ChromeToolButton _copyBtn;
     private readonly ChromeToolButton _pasteBtn;
@@ -73,6 +74,13 @@ internal sealed class BrowseForm : Form
     private Image _filterGlyphImage;
     private string _statusSticky;
     private int _statusStickyGen;
+    private bool _selectionStatusShown;
+    private bool _multiSelectMode;
+    private Point _pressPoint;
+    private ListViewItem _pressItem;
+    private bool _suppressClickOpen;
+    private bool _leftPressActive;
+    private bool _dragFromSelf;
     private long _menuClosedTick;
     private int _sortColumn;
     private bool _sortAsc = true;
@@ -215,6 +223,10 @@ internal sealed class BrowseForm : Form
         _refreshBtn.Click += delegate { _session.NoteActivity(); ReloadCurrentListing(); };
         _tips.SetToolTip(_refreshBtn, "Refresh");
 
+        _multiSelectBtn = MakeIconTool();
+        _multiSelectBtn.Click += delegate { _session.NoteActivity(); SetMultiSelectMode(!_multiSelectMode); };
+        _tips.SetToolTip(_multiSelectBtn, "Multi-select mode (off)");
+
         _cutBtn = MakeIconTool();
         _cutBtn.Click += delegate { _session.NoteActivity(); ClipboardCopySelected(true); };
         _tips.SetToolTip(_cutBtn, "Cut");
@@ -288,11 +300,18 @@ internal sealed class BrowseForm : Form
         _list.DrawSubItem += OnListDrawSubItem;
         _list.DrawColumnHeader += OnListDrawColumnHeader;
         _list.ColumnClick += OnColumnClick;
+        _list.AllowDrop = true;
+        _list.MouseDown += OnListMouseDown;
         _list.MouseMove += OnListMouseMove;
         _list.MouseLeave += OnListMouseLeave;
         _list.KeyDown += OnListKeyDown;
         _list.MouseUp += OnListMouseUp;
-        _list.SelectedIndexChanged += delegate { SyncActionButtons(); };
+        _list.MouseDoubleClick += OnListMouseDoubleClick;
+        _list.DragEnter += OnListDragEnter;
+        _list.DragOver += OnListDragOver;
+        _list.DragDrop += OnListDragDrop;
+        _list.DragLeave += OnListDragLeave;
+        _list.SelectedIndexChanged += delegate { SyncActionButtons(); UpdateSelectionStatus(); };
         EnsureColumns();
         ApplyViewMode();
         _listScrollChrome = new ListViewScrollChrome(_list, _listScroll);
@@ -334,6 +353,7 @@ internal sealed class BrowseForm : Form
         _chrome.Controls.Add(_pasteBtn);
         _chrome.Controls.Add(_copyBtn);
         _chrome.Controls.Add(_cutBtn);
+        _chrome.Controls.Add(_multiSelectBtn);
         _chrome.Controls.Add(_refreshBtn);
         _chrome.Controls.Add(_newFolderBtn);
         _chrome.Controls.Add(_filterHost);
@@ -517,6 +537,11 @@ internal sealed class BrowseForm : Form
                 _list.Focus();
                 return true;
             }
+            if (_multiSelectMode && _list.SelectedItems.Count > 0)
+            {
+                ClearListSelection();
+                return true;
+            }
             _session.ClosePane();
             return true;
         }
@@ -540,6 +565,11 @@ internal sealed class BrowseForm : Form
             if (keyData == (Keys.Control | Keys.Shift | Keys.N))
             {
                 CreateNewFolder();
+                return true;
+            }
+            if (keyData == (Keys.Control | Keys.A) && _multiSelectMode)
+            {
+                SelectAllListItems();
                 return true;
             }
             if (keyData == (Keys.Control | Keys.C))
@@ -765,7 +795,8 @@ internal sealed class BrowseForm : Form
         int orgGap = gap;
         _newFolderBtn.SetBounds(edge, y2, btnW, btnH);
         _refreshBtn.SetBounds(_newFolderBtn.Right + orgGap, y2, btnW, btnH);
-        _cutBtn.SetBounds(_refreshBtn.Right + group, y2, btnW, btnH);
+        _multiSelectBtn.SetBounds(_refreshBtn.Right + orgGap, y2, btnW, btnH);
+        _cutBtn.SetBounds(_multiSelectBtn.Right + group, y2, btnW, btnH);
         _copyBtn.SetBounds(_cutBtn.Right + orgGap, y2, btnW, btnH);
         _pasteBtn.SetBounds(_copyBtn.Right + orgGap, y2, btnW, btnH);
         _deleteBtn.SetBounds(_pasteBtn.Right + orgGap, y2, btnW, btnH);
@@ -822,6 +853,7 @@ internal sealed class BrowseForm : Form
         AssignGlyph(_filterClearBtn, ChromeIcons.Close(pathS));
         AssignGlyph(_newFolderBtn, ChromeIcons.NewFolder(s));
         AssignGlyph(_refreshBtn, ChromeIcons.Refresh(s));
+        AssignGlyph(_multiSelectBtn, ChromeIcons.MultiSelect(s));
         AssignGlyph(_cutBtn, ChromeIcons.Cut(s));
         AssignGlyph(_copyBtn, ChromeIcons.Copy(s));
         AssignGlyph(_pasteBtn, ChromeIcons.Paste(s));
@@ -863,6 +895,7 @@ internal sealed class BrowseForm : Form
         }
         _newFolderBtn.Glyph = null;
         _refreshBtn.Glyph = null;
+        _multiSelectBtn.Glyph = null;
         _cutBtn.Glyph = null;
         _copyBtn.Glyph = null;
         _pasteBtn.Glyph = null;
@@ -1077,14 +1110,24 @@ internal sealed class BrowseForm : Form
     private void ClipboardCopySelected(bool cut)
     {
         _session.NoteActivity();
-        DirEntry entry = SelectedEntry();
-        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+        if (!BrowseSelectionRules.CanCutCopyDelete(SelectedEntries()))
         {
             SetActionStatus(cut ? "Nothing to cut" : "Nothing to copy");
             return;
         }
-        if (ShellClipboard.SetFiles(new string[] { entry.FullPath }, cut))
-            SetActionStatus(cut ? "Cut to clipboard" : "Copied to clipboard");
+        string[] paths = SelectedPaths();
+        if (paths.Length == 0)
+        {
+            SetActionStatus(cut ? "Nothing to cut" : "Nothing to copy");
+            return;
+        }
+        if (ShellClipboard.SetFiles(paths, cut))
+        {
+            if (paths.Length == 1)
+                SetActionStatus(cut ? "Cut to clipboard" : "Copied to clipboard");
+            else
+                SetActionStatus((cut ? "Cut " : "Copied ") + paths.Length + " items to clipboard");
+        }
         else
             SetActionStatus("Clipboard failed");
     }
@@ -1150,8 +1193,7 @@ internal sealed class BrowseForm : Form
 
     private void SyncActionButtons()
     {
-        DirEntry entry = SelectedEntry();
-        bool canCopyCut = entry != null && !entry.IsDrive && !string.IsNullOrEmpty(entry.FullPath);
+        bool canCopyCut = BrowseSelectionRules.CanCutCopyDelete(SelectedEntries());
         bool canPaste = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
             && ShellClipboard.CanPaste();
         bool canDelete = canCopyCut;
@@ -1649,6 +1691,7 @@ internal sealed class BrowseForm : Form
 
     private void ClearListAndImages()
     {
+        _selectionStatusShown = false;
         _hotIndex = -1;
         _tipIndex = -1;
         if (_itemTipTimer != null)
@@ -1873,6 +1916,11 @@ internal sealed class BrowseForm : Form
     private void OnListMouseMove(object sender, MouseEventArgs e)
     {
         _session.NoteActivity();
+        if (_leftPressActive && (e.Button & MouseButtons.Left) != 0)
+        {
+            if (TryBeginDragOut(e.Location))
+                return;
+        }
         ListViewItem item = FindItemAtPoint(e.Location);
         int index = item != null ? item.Index : -1;
         SetHotIndex(index);
@@ -2175,6 +2223,17 @@ internal sealed class BrowseForm : Form
         // Use MouseUp + full-cell hit-test so the entire hover indicator opens the item.
         if (e.Button == MouseButtons.Left)
         {
+            if (_suppressClickOpen)
+            {
+                _suppressClickOpen = false;
+                _leftPressActive = false;
+                return;
+            }
+            _leftPressActive = false;
+            // Multi-select mode: native selection already ran; never open on click.
+            if (_multiSelectMode)
+                return;
+
             ListViewItem leftHit = FindItemAtPoint(e.Location);
             if (leftHit == null)
                 return;
@@ -2194,15 +2253,25 @@ internal sealed class BrowseForm : Form
             ListViewItem item = FindItemAtPoint(e.Location);
             if (item != null)
             {
-                item.Selected = true;
+                if (!(_multiSelectMode && item.Selected && _list.SelectedItems.Count > 1))
+                {
+                    _list.SelectedItems.Clear();
+                    item.Selected = true;
+                }
                 SyncActionButtons();
-                DirEntry entry = item.Tag as DirEntry;
-                if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+                List<DirEntry> selected = SelectedEntries();
+                if (selected.Count == 0)
                     return;
-                bool pinned = entry.IsDirectory && _session.IsPathPinned(entry.FullPath);
+                for (int i = 0; i < selected.Count; i++)
+                {
+                    if (selected[i] == null || string.IsNullOrEmpty(selected[i].FullPath))
+                        return;
+                }
+                bool pinned = selected.Count == 1 && selected[0].IsDirectory
+                    && _session.IsPathPinned(selected[0].FullPath);
                 bool canPasteItem = !_thisPc && !string.IsNullOrEmpty(_currentPath) && Directory.Exists(_currentPath)
                     && ShellClipboard.CanPaste();
-                _ctxMenu.ShowForItem(_list, e.Location, entry, pinned, canPasteItem);
+                _ctxMenu.ShowForItems(_list, e.Location, selected, pinned, canPasteItem);
                 return;
             }
 
@@ -2245,6 +2314,19 @@ internal sealed class BrowseForm : Form
         }
     }
 
+    private void OnListMouseDoubleClick(object sender, MouseEventArgs e)
+    {
+        _session.NoteActivity();
+        if (e.Button != MouseButtons.Left || !_multiSelectMode)
+            return;
+        ListViewItem hit = FindItemAtPoint(e.Location);
+        if (hit == null)
+            return;
+        _list.SelectedItems.Clear();
+        hit.Selected = true;
+        ActivateEntry(hit.Tag as DirEntry);
+    }
+
     private DirEntry SelectedEntry()
     {
         if (_list.SelectedItems.Count == 0)
@@ -2252,8 +2334,232 @@ internal sealed class BrowseForm : Form
         return _list.SelectedItems[0].Tag as DirEntry;
     }
 
+    private List<DirEntry> SelectedEntries()
+    {
+        List<DirEntry> result = new List<DirEntry>();
+        for (int i = 0; i < _list.SelectedItems.Count; i++)
+        {
+            DirEntry entry = _list.SelectedItems[i].Tag as DirEntry;
+            if (entry != null)
+                result.Add(entry);
+        }
+        return result;
+    }
+
+    /// <summary>Full paths of selected items (skips empty paths and drive roots).</summary>
+    private string[] SelectedPaths()
+    {
+        List<DirEntry> entries = SelectedEntries();
+        List<string> paths = new List<string>(entries.Count);
+        for (int i = 0; i < entries.Count; i++)
+        {
+            DirEntry e = entries[i];
+            if (e == null || e.IsDrive || string.IsNullOrEmpty(e.FullPath))
+                continue;
+            paths.Add(e.FullPath);
+        }
+        return paths.ToArray();
+    }
+
+    private void ClearListSelection()
+    {
+        if (_list.SelectedItems.Count > 0)
+            _list.SelectedItems.Clear();
+    }
+
+    private void SelectAllListItems()
+    {
+        _list.BeginUpdate();
+        try
+        {
+            for (int i = 0; i < _list.Items.Count; i++)
+                _list.Items[i].Selected = true;
+        }
+        finally
+        {
+            _list.EndUpdate();
+        }
+    }
+
+    private void SetMultiSelectMode(bool on)
+    {
+        _multiSelectMode = on;
+        _list.MultiSelect = on;
+        _multiSelectBtn.Selected = on;
+        _tips.SetToolTip(_multiSelectBtn, on ? "Multi-select mode (on)" : "Multi-select mode (off)");
+        if (!on)
+            ClearListSelection();
+        SyncActionButtons();
+        UpdateSelectionStatus();
+    }
+
+    private void UpdateSelectionStatus()
+    {
+        int count = _list.SelectedItems.Count;
+        bool stickyActive = !string.IsNullOrEmpty(_statusSticky);
+        if (stickyActive)
+        {
+            _selectionStatusShown = false;
+            return;
+        }
+        if (count > 1)
+        {
+            _status.Text = count + " selected";
+            _selectionStatusShown = true;
+        }
+        else if (_selectionStatusShown)
+        {
+            _selectionStatusShown = false;
+            UpdateFilterStatus();
+        }
+    }
+
+    // --- Drag out / drop in -------------------------------------------------
+
+    private void OnListMouseDown(object sender, MouseEventArgs e)
+    {
+        _session.NoteActivity();
+        if (e.Button != MouseButtons.Left)
+            return;
+        _pressPoint = e.Location;
+        _pressItem = FindItemAtPoint(e.Location);
+        _leftPressActive = true;
+        _suppressClickOpen = false;
+    }
+
+    /// <summary>Starts a file drag when the pointer left the press threshold. True when a drag ran.</summary>
+    private bool TryBeginDragOut(Point location)
+    {
+        Size dragSize = SystemInformation.DragSize;
+        int dx = Math.Abs(location.X - _pressPoint.X);
+        int dy = Math.Abs(location.Y - _pressPoint.Y);
+        if (dx < dragSize.Width && dy < dragSize.Height)
+            return false;
+
+        ListViewItem press = _pressItem;
+        // Empty-space drag: leave native marquee alone (multi mode); do not start a file drag.
+        if (press == null || press.ListView != _list)
+        {
+            _leftPressActive = false;
+            return false;
+        }
+
+        // Past the drag threshold on an item: this press is a file drag, never a click-to-open.
+        _leftPressActive = false;
+        _suppressClickOpen = true;
+        _pressItem = null;
+
+        if (!press.Selected)
+        {
+            bool modifiers = (Control.ModifierKeys & (Keys.Control | Keys.Shift)) != Keys.None;
+            if (!_multiSelectMode || !modifiers)
+                ClearListSelection();
+            press.Selected = true;
+        }
+
+        string[] paths = SelectedPaths();
+        if (paths.Length == 0)
+        {
+            DirEntry pe = press.Tag as DirEntry;
+            if (pe == null || pe.IsDrive || string.IsNullOrEmpty(pe.FullPath))
+                return false;
+            ClearListSelection();
+            press.Selected = true;
+            paths = new string[] { pe.FullPath };
+        }
+
+        DataObject data = ShellDragDrop.BuildFileDropDataObject(paths, false);
+        if (data == null)
+            return false;
+
+        _itemTipTimer.Stop();
+        HideItemTip();
+        SetHotIndex(-1);
+        _dragFromSelf = true;
+        DragDropEffects result = DragDropEffects.None;
+        try
+        {
+            result = DoDragDrop(data, DragDropEffects.Copy | DragDropEffects.Move);
+        }
+        catch (Exception ex)
+        {
+            Program.LogError(ex, "drag-out");
+        }
+        finally
+        {
+            _dragFromSelf = false;
+            _leftPressActive = false;
+        }
+        if (result == DragDropEffects.Move)
+        {
+            SetActionStatus("Moved " + paths.Length + (paths.Length == 1 ? " item" : " items"));
+            ReloadCurrentListing();
+        }
+        return true;
+    }
+
+    private bool CanAcceptDrop(DragEventArgs e)
+    {
+        if (_thisPc || string.IsNullOrEmpty(_currentPath) || !Directory.Exists(_currentPath))
+            return false;
+        // Dropping our own selection back on this folder would only make duplicates.
+        if (_dragFromSelf)
+            return false;
+        return e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop);
+    }
+
+    private DragDropEffects ResolveListDropEffect(DragEventArgs e)
+    {
+        bool defaultMove = ShellDragDrop.IsPreferredMove(e.Data);
+        return ShellDragDrop.ResolveDropEffect(e.AllowedEffect, e.KeyState, defaultMove);
+    }
+
+    private void OnListDragEnter(object sender, DragEventArgs e)
+    {
+        _session.NoteActivity();
+        e.Effect = CanAcceptDrop(e) ? ResolveListDropEffect(e) : DragDropEffects.None;
+    }
+
+    private void OnListDragOver(object sender, DragEventArgs e)
+    {
+        e.Effect = CanAcceptDrop(e) ? ResolveListDropEffect(e) : DragDropEffects.None;
+    }
+
+    private void OnListDragLeave(object sender, EventArgs e)
+    {
+        SetHotIndex(-1);
+    }
+
+    private void OnListDragDrop(object sender, DragEventArgs e)
+    {
+        _session.NoteActivity();
+        if (!CanAcceptDrop(e))
+            return;
+        string[] paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        if (paths == null || paths.Length == 0)
+            return;
+        DragDropEffects effect = ResolveListDropEffect(e);
+        if (effect == DragDropEffects.None)
+            return;
+        bool move = effect == DragDropEffects.Move;
+        string status;
+        bool ok = ShellDragDrop.BringPathsInto(_currentPath, paths, move, out status);
+        SetActionStatus(status ?? (ok ? "Dropped" : "Drop failed"));
+        ReloadCurrentListing();
+        // We already moved the files; tell the source not to delete them again.
+        if (move)
+            e.Effect = DragDropEffects.None;
+    }
+
     private void ActivateSelected()
     {
+        // Multi-select: Enter opens the focused item when it is part of the selection, else the first one.
+        ListViewItem focused = _list.FocusedItem;
+        if (_list.SelectedItems.Count > 1 && focused != null && focused.Selected)
+        {
+            ActivateEntry(focused.Tag as DirEntry);
+            return;
+        }
         ActivateEntry(SelectedEntry());
     }
 
@@ -2301,29 +2607,49 @@ internal sealed class BrowseForm : Form
 
     private void OnSendToRequested(string destId)
     {
-        DirEntry entry = SelectedEntry();
-        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+        List<DirEntry> selected = SelectedEntries();
+        if (!BrowseSelectionRules.CanCutCopyDelete(selected))
             return;
-        string error;
-        string dest = SendToCatalog.CopyTo(destId, entry.FullPath, out error);
-        if (dest == null)
+        int ok = 0;
+        string lastDest = null;
+        string firstError = null;
+        for (int i = 0; i < selected.Count; i++)
         {
-            SetActionStatus("Send to failed: " + (error ?? "unknown error"));
+            string error;
+            string dest = SendToCatalog.CopyTo(destId, selected[i].FullPath, out error);
+            if (dest == null)
+            {
+                if (firstError == null)
+                    firstError = error ?? "unknown error";
+                continue;
+            }
+            ok++;
+            lastDest = dest;
+        }
+        if (ok == 0)
+        {
+            SetActionStatus("Send to failed: " + (firstError ?? "unknown error"));
             return;
         }
-        SetActionStatus("Sent to " + destId + ": " + Path.GetFileName(dest));
+        if (selected.Count == 1)
+            SetActionStatus("Sent to " + destId + ": " + Path.GetFileName(lastDest));
+        else if (firstError != null)
+            SetActionStatus("Sent " + ok + " of " + selected.Count + " items to " + destId + " (" + firstError + ")");
+        else
+            SetActionStatus("Sent " + ok + " items to " + destId);
         if (!_thisPc && !string.IsNullOrEmpty(_currentPath)
-            && string.Equals(Path.GetDirectoryName(dest), _currentPath, StringComparison.OrdinalIgnoreCase))
+            && string.Equals(Path.GetDirectoryName(lastDest), _currentPath, StringComparison.OrdinalIgnoreCase))
         {
             ReloadCurrentListing();
-            SelectPathInList(dest);
+            if (selected.Count == 1)
+                SelectPathInList(lastDest);
         }
     }
 
     private void OnCompressWithRequested(string kindName)
     {
-        DirEntry entry = SelectedEntry();
-        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+        List<DirEntry> selected = SelectedEntries();
+        if (!BrowseSelectionRules.CanCutCopyDelete(selected))
             return;
         ArchiveProviderKind kind;
         if (!TryParseArchiveKind(kindName, out kind))
@@ -2331,40 +2657,73 @@ internal sealed class BrowseForm : Form
             SetActionStatus("Unknown archive tool");
             return;
         }
-        if (kind == ArchiveProviderKind.ZipManaged)
+        ArchiveProvider provider = null;
+        if (kind != ArchiveProviderKind.ZipManaged)
         {
-            string error;
-            string zip = ZipOps.Compress(entry.FullPath, out error);
-            if (zip == null)
+            provider = FindArchiveProvider(kind);
+            if (provider == null)
             {
-                SetActionStatus("Compress failed: " + (error ?? "unknown error"));
+                SetActionStatus("Archive tool not found");
                 return;
             }
-            SetActionStatus("Created " + Path.GetFileName(zip));
+        }
+
+        int ok = 0;
+        string lastZip = null;
+        string firstError = null;
+        for (int i = 0; i < selected.Count; i++)
+        {
+            string src = selected[i].FullPath;
+            if (kind == ArchiveProviderKind.ZipManaged)
+            {
+                string error;
+                string zip = ZipOps.Compress(src, out error);
+                if (zip == null)
+                {
+                    if (firstError == null)
+                        firstError = error ?? "unknown error";
+                    continue;
+                }
+                ok++;
+                lastZip = zip;
+                continue;
+            }
+
+            string dest = ArchiveCatalog.SuggestZipPath(src);
+            if (string.IsNullOrEmpty(dest))
+            {
+                if (firstError == null)
+                    firstError = "Could not choose archive path";
+                continue;
+            }
+            string args = ArchiveCatalog.CompressArgs(kind, src, dest);
+            string runError;
+            if (!ArchiveCatalog.Run(provider, args, out runError))
+            {
+                if (firstError == null)
+                    firstError = runError ?? "unknown error";
+                continue;
+            }
+            ok++;
+        }
+
+        if (ok == 0)
+        {
+            SetActionStatus("Compress failed: " + (firstError ?? "unknown error"));
+            return;
+        }
+        if (kind == ArchiveProviderKind.ZipManaged)
+        {
+            if (selected.Count == 1)
+                SetActionStatus("Created " + Path.GetFileName(lastZip));
+            else
+                SetActionStatus("Created " + ok + " archive(s)" + (firstError != null ? " (" + firstError + ")" : ""));
             ReloadCurrentListing();
-            SelectPathInList(zip);
+            if (selected.Count == 1)
+                SelectPathInList(lastZip);
             return;
         }
-        ArchiveProvider provider = FindArchiveProvider(kind);
-        if (provider == null)
-        {
-            SetActionStatus("Archive tool not found");
-            return;
-        }
-        string dest = ArchiveCatalog.SuggestZipPath(entry.FullPath);
-        if (string.IsNullOrEmpty(dest))
-        {
-            SetActionStatus("Could not choose archive path");
-            return;
-        }
-        string args = ArchiveCatalog.CompressArgs(kind, entry.FullPath, dest);
-        string runError;
-        if (!ArchiveCatalog.Run(provider, args, out runError))
-        {
-            SetActionStatus("Compress failed: " + (runError ?? "unknown error"));
-            return;
-        }
-        SetActionStatus("Compressing with " + provider.Title + "…");
+        SetActionStatus("Compressing " + ok + (ok == 1 ? " item" : " items") + " with " + provider.Title + "…");
         ReloadCurrentListing();
     }
 
@@ -2649,6 +3008,34 @@ internal sealed class BrowseForm : Form
 
     private void CopySelectedPath()
     {
+        List<DirEntry> selected = SelectedEntries();
+        if (selected.Count > 1)
+        {
+            StringBuilder sb = new StringBuilder();
+            int n = 0;
+            for (int i = 0; i < selected.Count; i++)
+            {
+                DirEntry e = selected[i];
+                if (e == null || string.IsNullOrEmpty(e.FullPath))
+                    continue;
+                if (n > 0)
+                    sb.Append(Environment.NewLine);
+                sb.Append(e.FullPath);
+                n++;
+            }
+            if (n == 0)
+                return;
+            try
+            {
+                Clipboard.SetText(sb.ToString());
+                _status.Text = n + " paths copied";
+            }
+            catch
+            {
+            }
+            return;
+        }
+
         DirEntry entry = SelectedEntry();
         if (entry == null || string.IsNullOrEmpty(entry.FullPath))
         {
@@ -2667,14 +3054,40 @@ internal sealed class BrowseForm : Form
 
     private void DeleteSelected()
     {
-        DirEntry entry = SelectedEntry();
-        if (entry == null || entry.IsDrive || string.IsNullOrEmpty(entry.FullPath))
+        List<DirEntry> selected = SelectedEntries();
+        if (!BrowseSelectionRules.CanCutCopyDelete(selected))
             return;
 
-        string kind = entry.IsDirectory ? "folder" : "file";
+        string[] paths = SelectedPaths();
+        if (paths.Length == 0)
+            return;
+
+        string prompt;
+        string doneStatus;
+        if (selected.Count == 1)
+        {
+            DirEntry entry = selected[0];
+            string kind = entry.IsDirectory ? "folder" : "file";
+            prompt = "Send this " + kind + " to the Recycle Bin?\n\n" + entry.FullPath;
+            doneStatus = "Moved to Recycle Bin: " + entry.Name;
+        }
+        else
+        {
+            const int maxNames = 5;
+            StringBuilder sb = new StringBuilder();
+            sb.Append("Send ").Append(selected.Count).Append(" items to the Recycle Bin?\n\n");
+            int shown = Math.Min(maxNames, selected.Count);
+            for (int i = 0; i < shown; i++)
+                sb.Append(selected[i].Name).Append('\n');
+            if (selected.Count > shown)
+                sb.Append("… and ").Append(selected.Count - shown).Append(" more");
+            prompt = sb.ToString().TrimEnd('\n');
+            doneStatus = "Moved " + selected.Count + " items to Recycle Bin";
+        }
+
         DialogResult answer = MessageBox.Show(
             this,
-            "Send this " + kind + " to the Recycle Bin?\n\n" + entry.FullPath,
+            prompt,
             "QuickBrowse",
             MessageBoxButtons.YesNo,
             MessageBoxIcon.Warning,
@@ -2682,9 +3095,9 @@ internal sealed class BrowseForm : Form
         if (answer != DialogResult.Yes)
             return;
 
-        if (ShellFileOps.SendToRecycleBin(Handle, entry.FullPath))
+        if (ShellFileOps.SendToRecycleBin(Handle, paths))
         {
-            SetActionStatus("Moved to Recycle Bin: " + entry.Name);
+            SetActionStatus(doneStatus);
             ReloadCurrentListing();
         }
         else

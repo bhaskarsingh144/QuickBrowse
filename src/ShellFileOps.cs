@@ -21,12 +21,21 @@ internal static class ShellFileOps
     {
         if (string.IsNullOrEmpty(path))
             return false;
+        return SendToRecycleBin(hwnd, new string[] { path });
+    }
+
+    /// <summary>Send several paths to the Recycle Bin in one shell operation.</summary>
+    public static bool SendToRecycleBin(IntPtr hwnd, string[] paths)
+    {
+        string from = ShellDragDrop.JoinPathsForShFileOp(paths);
+        if (from == null)
+            return false;
         try
         {
             SHFILEOPSTRUCT op = new SHFILEOPSTRUCT();
             op.hwnd = hwnd;
             op.wFunc = FoDelete;
-            op.pFrom = path + "\0\0";
+            op.pFrom = from;
             op.pTo = null;
             op.fFlags = (short)(FofAllowUndo | FofNoConfirmation | FofSilent);
             op.fAnyOperationsAborted = false;
@@ -40,7 +49,6 @@ internal static class ShellFileOps
             return false;
         }
     }
-
     public static bool ShowProperties(IntPtr hwnd, string path)
     {
         if (string.IsNullOrEmpty(path))

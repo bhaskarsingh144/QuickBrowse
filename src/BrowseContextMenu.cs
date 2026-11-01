@@ -253,53 +253,73 @@ internal sealed class BrowseContextMenu : IDisposable
     {
         if (entry == null || host == null)
             return;
+        List<DirEntry> one = new List<DirEntry>(1);
+        one.Add(entry);
+        ShowForItems(host, clientPt, one, isPinned, canPaste);
+    }
 
-        bool isDrive = entry.IsDrive;
-        bool isDir = entry.IsDirectory;
-        bool hasPath = !string.IsNullOrEmpty(entry.FullPath);
-        bool isFile = hasPath && !isDir && !isDrive;
-        bool isArchive = isFile && ArchiveCatalog.IsArchivePath(entry.FullPath);
-        bool canEdit = hasPath && !isDrive;
+    public void ShowForItems(Control host, Point clientPt, IList<DirEntry> entries, bool isPinned, bool canPaste)
+    {
+        if (host == null || entries == null || entries.Count == 0)
+            return;
 
-        SetClipboardEnabled(canEdit, canPaste);
-        _listRename.Enabled = canEdit;
-        _listDelete.Enabled = canEdit;
-        _iconRename.Enabled = canEdit;
-        _iconDelete.Enabled = canEdit;
+        BrowseMenuCapabilities caps = BrowseSelectionRules.Compute(entries);
+        bool single = caps.Count == 1;
+        DirEntry first = entries[0];
 
-        _openItem.Enabled = hasPath;
+        SetClipboardEnabled(caps.CanCutCopyDelete, canPaste);
+        _listRename.Enabled = caps.CanRename;
+        _listDelete.Enabled = caps.CanCutCopyDelete;
+        _iconRename.Enabled = caps.CanRename;
+        _iconDelete.Enabled = caps.CanCutCopyDelete;
 
-        RebuildOpenWith(entry);
-        RebuildOpenIn(entry);
+        // Open is single-target only: opening many items at once is dangerous.
+        _openItem.Enabled = single && caps.CanOpen;
+
+        RebuildOpenWith(single ? first : null);
+        RebuildOpenIn(single ? first : null);
         RebuildSendTo();
         RebuildCompress();
-        RebuildExtract(entry);
+        RebuildExtract(single ? first : null);
         RebuildTerminal(_terminalItem);
 
-        _pinItem.Visible = isDir && !isDrive;
-        _pinItem.Enabled = isDir && !isDrive && hasPath;
+        _openWithItem.Visible = caps.CanOpenWith;
+        _openWithItem.Enabled = caps.CanOpenWith;
+        if (!caps.CanOpenIn)
+        {
+            _openInItem.Visible = false;
+            _openInItem.Enabled = false;
+        }
+
+        _pinItem.Visible = caps.CanPin;
+        _pinItem.Enabled = caps.CanPin;
         _pinItem.Text = isPinned ? "Unpin folder" : "Pin folder";
 
-        _sendToItem.Visible = canEdit;
-        _sendToItem.Enabled = canEdit && _sendToItem.DropDownItems.Count > 0;
-        _compressItem.Visible = canEdit && !isArchive;
-        _compressItem.Enabled = canEdit && !isArchive && _compressItem.DropDownItems.Count > 0;
-        _extractItem.Visible = isArchive;
-        _extractItem.Enabled = isArchive && _extractItem.DropDownItems.Count > 0;
+        _sendToItem.Visible = caps.CanSendTo;
+        _sendToItem.Enabled = caps.CanSendTo && _sendToItem.DropDownItems.Count > 0;
+        _compressItem.Visible = caps.CanCompress;
+        _compressItem.Enabled = caps.CanCompress && _compressItem.DropDownItems.Count > 0;
+        _extractItem.Visible = caps.CanExtract;
+        _extractItem.Enabled = caps.CanExtract && _extractItem.DropDownItems.Count > 0;
 
-        _copyPathItem.Enabled = hasPath;
-        _copyNameItem.Enabled = hasPath;
-        _copyQuotedItem.Enabled = hasPath;
-        _copyHashItem.Visible = isFile;
-        _copyHashItem.Enabled = isFile;
-        _duplicateItem.Enabled = canEdit;
-        _shortcutItem.Enabled = canEdit;
-        _runAsAdminItem.Visible = isFile && IsRunnable(entry.FullPath);
+        _copyPathItem.Enabled = caps.CanCopyPath;
+        _copyNameItem.Visible = single;
+        _copyNameItem.Enabled = single && caps.CanCopyPath;
+        _copyQuotedItem.Visible = single;
+        _copyQuotedItem.Enabled = single && caps.CanCopyPath;
+        _copyHashItem.Visible = caps.CanHash;
+        _copyHashItem.Enabled = caps.CanHash;
+        _duplicateItem.Enabled = caps.CanDuplicate;
+        _shortcutItem.Enabled = caps.CanShortcut;
+        _runAsAdminItem.Visible = caps.CanRunAsAdmin
+            && single && BrowseSelectionRules.IsRunnablePath(first.FullPath);
         _runAsAdminItem.Enabled = _runAsAdminItem.Visible;
-        _terminalItem.Visible = isDir && !isDrive;
-        _terminalItem.Enabled = isDir && !isDrive && hasPath;
-        _explorerItem.Enabled = hasPath;
-        _propsItem.Enabled = hasPath;
+        _terminalItem.Visible = caps.CanTerminal;
+        _terminalItem.Enabled = caps.CanTerminal;
+        _explorerItem.Visible = single;
+        _explorerItem.Enabled = single && caps.CanExplorer;
+        _propsItem.Visible = single;
+        _propsItem.Enabled = single && caps.CanProperties;
 
         _itemMenu.Show(host, clientPt);
     }
@@ -446,22 +466,6 @@ internal sealed class BrowseContextMenu : IDisposable
         parent.DropDownItems.Add(MakeDropItem("Windows Terminal", delegate { FireTerminal("wt"); }));
         parent.DropDownItems.Add(MakeDropItem("PowerShell", delegate { FireTerminal("powershell"); }));
         parent.DropDownItems.Add(MakeDropItem("Command Prompt", delegate { FireTerminal("cmd"); }));
-    }
-
-    private static bool IsRunnable(string path)
-    {
-        if (string.IsNullOrEmpty(path))
-            return false;
-        string ext;
-        try { ext = Path.GetExtension(path); }
-        catch { return false; }
-        if (string.IsNullOrEmpty(ext))
-            return false;
-        return string.Equals(ext, ".exe", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ext, ".bat", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ext, ".cmd", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ext, ".ps1", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(ext, ".msi", StringComparison.OrdinalIgnoreCase);
     }
 
     private Button MakeIconButton(string tip, EventHandler onClick)
