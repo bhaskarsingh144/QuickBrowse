@@ -15,6 +15,8 @@ internal sealed class BrowseForm : Form
         public bool ThisPc;
         public string Path;
         public string Title;
+        public string SelectedPath;
+        public int ScrollPos;
     }
 
     private const int LvmFirst = 0x1000;
@@ -90,6 +92,9 @@ internal sealed class BrowseForm : Form
     private string _pendingSelectPath;
     private int _pendingFocusIndex = -1;
     private int _pendingFocusGen = -1;
+    private string _pendingRestorePath;
+    private int _pendingRestoreScroll = -1;
+    private int _pendingRestoreGen = -1;
     private int _hotIndex = -1;
     private int _tipIndex = -1;
     private Point _tipClientPt;
@@ -115,6 +120,7 @@ internal sealed class BrowseForm : Form
         _session = session;
         _viewMode = Prefs.LoadViewMode();
         _showHidden = Prefs.LoadShowHidden();
+        Prefs.LoadSort(out _sortColumn, out _sortAsc);
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
@@ -1320,19 +1326,84 @@ internal sealed class BrowseForm : Form
             _session.NotifyPaneNavigated(_currentPath, _thisPc);
         else
             SyncPinChrome();
+        QueueNavRestore(next);
         LoadListingAsync(next.ThisPc, next.Path);
     }
 
     private void PushCurrent()
     {
+        string selectedPath = null;
+        DirEntry selected = SelectedEntry();
+        if (selected != null && !string.IsNullOrEmpty(selected.FullPath))
+            selectedPath = selected.FullPath;
+        int scrollPos = 0;
+        if (_listScrollChrome != null)
+            scrollPos = _listScrollChrome.GetVerticalPos();
         _backStack.Add(new NavState
         {
             ThisPc = _thisPc,
             Path = _currentPath,
-            Title = _thisPc ? "This PC" : (_currentPath ?? "")
+            Title = _thisPc ? "This PC" : (_currentPath ?? ""),
+            SelectedPath = selectedPath,
+            ScrollPos = scrollPos
         });
         if (_backStack.Count > 40)
             _backStack.RemoveAt(0);
+    }
+
+    private void QueueNavRestore(NavState state)
+    {
+        if (state == null)
+        {
+            _pendingRestorePath = null;
+            _pendingRestoreScroll = -1;
+            _pendingRestoreGen = -1;
+            return;
+        }
+        bool hasPath = !string.IsNullOrEmpty(state.SelectedPath);
+        bool hasScroll = state.ScrollPos > 0;
+        if (!hasPath && !hasScroll)
+        {
+            _pendingRestorePath = null;
+            _pendingRestoreScroll = -1;
+            _pendingRestoreGen = -1;
+            return;
+        }
+        _pendingRestorePath = state.SelectedPath;
+        _pendingRestoreScroll = hasScroll ? state.ScrollPos : -1;
+        _pendingRestoreGen = _loadGen + 1;
+    }
+
+    private void ApplyPendingNavRestore()
+    {
+        if (_pendingRestoreGen != _loadGen)
+        {
+            _pendingRestorePath = null;
+            _pendingRestoreScroll = -1;
+            _pendingRestoreGen = -1;
+            return;
+        }
+        string path = _pendingRestorePath;
+        int scroll = _pendingRestoreScroll;
+        _pendingRestorePath = null;
+        _pendingRestoreScroll = -1;
+        _pendingRestoreGen = -1;
+
+        // Mutation pending focus (rename/new/delete) wins over Back restore for the same load.
+        if (_pendingFocusGen == _loadGen
+            && (!string.IsNullOrEmpty(_pendingSelectPath) || _pendingFocusIndex >= 0))
+            return;
+
+        if (!string.IsNullOrEmpty(path))
+            SelectPathInList(path);
+        if (scroll >= 0 && _listScrollChrome != null)
+        {
+            BeginInvoke(new Action(delegate
+            {
+                if (_listScrollChrome != null)
+                    _listScrollChrome.ScrollToVerticalPos(scroll);
+            }));
+        }
     }
 
     private void SetPathText(string text)
@@ -1662,6 +1733,7 @@ internal sealed class BrowseForm : Form
             RebuildItemsFromCache();
             FinishListingStatus(_listingError);
             SyncListOverlay();
+            ApplyPendingNavRestore();
             ApplyPendingFocus();
             SyncNavButtons();
             SyncActionButtons();
@@ -1673,6 +1745,7 @@ internal sealed class BrowseForm : Form
             RebuildItemsFromCache();
             FinishListingStatus(listing.Error);
             SyncListOverlay();
+            ApplyPendingNavRestore();
             ApplyPendingFocus();
             SyncNavButtons();
             SyncActionButtons();
@@ -1686,6 +1759,7 @@ internal sealed class BrowseForm : Form
         RebuildItemsFromCache();
         FinishListingStatus(null);
         SyncListOverlay();
+        ApplyPendingNavRestore();
         ApplyPendingFocus();
         SyncNavButtons();
         SyncActionButtons();
@@ -1981,7 +2055,17 @@ internal sealed class BrowseForm : Form
         }
         if (string.IsNullOrEmpty(_filterText))
         {
-            SetListingStatus(total + " items");
+            int folders = 0;
+            int files = 0;
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                DirEntry e = _entries[i];
+                if (e != null && e.IsDirectory)
+                    folders++;
+                else
+                    files++;
+            }
+            SetListingStatus(BrowseStatusText.FormatListing(folders, files));
             SyncListOverlay();
             return;
         }
@@ -1991,7 +2075,7 @@ internal sealed class BrowseForm : Form
             if (PassesFilter(_entries[i], _filterText))
                 shown++;
         }
-        SetListingStatus(shown + " of " + total + " items");
+        SetListingStatus(BrowseStatusText.FormatFilter(shown, total));
         SyncListOverlay();
     }
 
@@ -2136,6 +2220,7 @@ internal sealed class BrowseForm : Form
             _sortColumn = e.Column;
             _sortAsc = true;
         }
+        Prefs.SaveSort(_sortColumn, _sortAsc);
         SortCachedEntries();
         RebuildItemsFromCache();
     }
@@ -2526,9 +2611,10 @@ internal sealed class BrowseForm : Form
             _selectionStatusShown = false;
             return;
         }
-        if (count > 1)
+        string selectedText = BrowseStatusText.FormatSelected(count);
+        if (!string.IsNullOrEmpty(selectedText))
         {
-            _status.Text = count + " selected";
+            _status.Text = selectedText;
             _selectionStatusShown = true;
         }
         else if (_selectionStatusShown)
