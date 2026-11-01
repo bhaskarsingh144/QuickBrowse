@@ -134,6 +134,11 @@ Run-Suite "BrowseOverlayRulesTests" @(
     (Join-Path $testsDir "BrowseOverlayRulesTests.cs")
 ) "BrowseOverlayRulesTests.exe" $core
 
+Run-Suite "BrowseMutationFocusTests" @(
+    (Join-Path $srcDir "BrowseMutationFocus.cs"),
+    (Join-Path $testsDir "BrowseMutationFocusTests.cs")
+) "BrowseMutationFocusTests.exe" $core
+
 Run-Suite "CrashLogTests" @(
     (Join-Path $srcDir "CrashLog.cs"),
     (Join-Path $testsDir "CrashLogTests.cs")
