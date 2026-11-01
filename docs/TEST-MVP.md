@@ -20,7 +20,9 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] Keys when list focused: F5 · Ctrl+Shift+N · Ctrl+C/X/V · Enter · Alt+Up · Delete
 - [ ] View dropdown: Tiles / Content / Details + Show hidden; prefs survive restart
 - [ ] This PC: New folder disabled; Paste blocked; Show hidden does not change drive list
-- [ ] Access-denied / empty folder show status text
+- [ ] Access-denied / empty folder show status text **and** a centered in-pane overlay (Retry on errors)
+- [ ] Large folders show a **Loading…** overlay (not a blank list) until items appear
+- [ ] Filter with zero matches shows **No matching items** overlay; clear filter restores the list
 - [ ] Tray → Show / Exit
 - [ ] Idle ~30s without activity closes pane (+ flyout if open)
 

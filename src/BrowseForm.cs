@@ -45,6 +45,7 @@ internal sealed class BrowseForm : Form
     private readonly ChromeToolButton _closeBtn;
     private readonly Label _status;
     private readonly ListView _list;
+    private readonly BrowseListOverlay _listOverlay;
     private readonly ChromeScrollBar _listScroll;
     private readonly ListViewScrollChrome _listScrollChrome;
     private readonly ImageList _smallImages;
@@ -84,6 +85,8 @@ internal sealed class BrowseForm : Form
     private long _menuClosedTick;
     private int _sortColumn;
     private bool _sortAsc = true;
+    private bool _listingLoading;
+    private string _listingError;
     private int _hotIndex = -1;
     private int _tipIndex = -1;
     private Point _tipClientPt;
@@ -361,9 +364,13 @@ internal sealed class BrowseForm : Form
         _chrome.Controls.Add(_upBtn);
         _chrome.Controls.Add(_backBtn);
 
-        // Higher z-order docks first: scrollbar Right, then list Fill into remainder.
+        _listOverlay = new BrowseListOverlay();
+        _listOverlay.RetryRequested += delegate { _session.NoteActivity(); ReloadCurrentListing(); };
+
+        // Higher z-order docks first: scrollbar Right, then list Fill; overlay last so it covers the list.
         _content.Controls.Add(_list);
         _content.Controls.Add(_listScroll);
+        _content.Controls.Add(_listOverlay);
 
         Controls.Add(_content);
         Controls.Add(_status);
@@ -466,6 +473,8 @@ internal sealed class BrowseForm : Form
         _list.Font = _tileFont;
         EnsureFieldFonts();
         _ctxMenu.ApplyMetrics(_dpi, _fit, textFit);
+        if (_listOverlay != null)
+            _listOverlay.ApplyScale(_dpi, _fit, _uiFont);
 
         ApplyGlyphs();
         RebuildCrumbs();
@@ -617,6 +626,7 @@ internal sealed class BrowseForm : Form
         if (_closeBtn != null && Width > 0)
             LayoutChromeButtons(_chrome.Height);
         LayoutDetailColumns();
+        LayoutListOverlay();
         ChromeVisual.ApplyRoundedRegion(this, Px(ChromeVisual.CornerDip));
     }
 
@@ -1614,10 +1624,13 @@ internal sealed class BrowseForm : Form
     private void LoadListingAsync(bool thisPc, string path)
     {
         int gen = Interlocked.Increment(ref _loadGen);
+        _listingLoading = true;
+        _listingError = null;
         if (string.IsNullOrEmpty(_statusSticky) || _statusStickyGen != gen)
             _status.Text = "Loading…";
         ClearListAndImages();
         _entries.Clear();
+        SyncListOverlay();
         SyncActionButtons();
 
         bool showHidden = _showHidden;
@@ -1637,31 +1650,78 @@ internal sealed class BrowseForm : Form
 
     private void ApplyListing(DirectoryListing listing)
     {
+        _listingLoading = false;
         _entries.Clear();
         if (listing == null)
         {
+            _listingError = "Nothing to show.";
             RebuildItemsFromCache();
-            FinishListingStatus("Nothing to show.");
+            FinishListingStatus(_listingError);
+            SyncListOverlay();
             SyncNavButtons();
             SyncActionButtons();
             return;
         }
         if (!string.IsNullOrEmpty(listing.Error))
         {
+            _listingError = listing.Error;
             RebuildItemsFromCache();
             FinishListingStatus(listing.Error);
+            SyncListOverlay();
             SyncNavButtons();
             SyncActionButtons();
             return;
         }
+        _listingError = null;
         IList<DirEntry> entries = listing.Entries ?? new List<DirEntry>();
         for (int i = 0; i < entries.Count; i++)
             _entries.Add(entries[i]);
         SortCachedEntries();
         RebuildItemsFromCache();
         FinishListingStatus(null);
+        SyncListOverlay();
         SyncNavButtons();
         SyncActionButtons();
+    }
+
+    private void SyncListOverlay()
+    {
+        if (_listOverlay == null)
+            return;
+        bool filterActive = !string.IsNullOrEmpty(_filterText);
+        int visible = 0;
+        if (!_listingLoading && string.IsNullOrEmpty(_listingError) && _entries.Count > 0)
+        {
+            if (!filterActive)
+                visible = _entries.Count;
+            else
+            {
+                for (int i = 0; i < _entries.Count; i++)
+                {
+                    if (PassesFilter(_entries[i], _filterText))
+                        visible++;
+                }
+            }
+        }
+        BrowseOverlayKind kind = BrowseOverlayRules.Decide(
+            _listingLoading,
+            _listingError,
+            _entries.Count,
+            filterActive,
+            visible);
+        string detail = kind == BrowseOverlayKind.Error ? _listingError : null;
+        LayoutListOverlay();
+        _listOverlay.ShowState(kind, detail);
+        if (kind != BrowseOverlayKind.None)
+            _listOverlay.BringToFront();
+    }
+
+    private void LayoutListOverlay()
+    {
+        if (_listOverlay == null || _list == null)
+            return;
+        // Match the list client area inside _content (not Dock Fill — avoids fighting list/scrollbar dock).
+        _listOverlay.Bounds = _list.Bounds;
     }
 
     private void FinishListingStatus(string fallback)
@@ -1849,17 +1909,20 @@ internal sealed class BrowseForm : Form
             && string.IsNullOrEmpty(_filterText))
         {
             _status.Text = _statusSticky;
+            SyncListOverlay();
             return;
         }
         int total = _entries.Count;
         if (total == 0)
         {
-            SetListingStatus("Empty folder");
+            SetListingStatus(_listingLoading ? "Loading…" : (string.IsNullOrEmpty(_listingError) ? "Empty folder" : _listingError));
+            SyncListOverlay();
             return;
         }
         if (string.IsNullOrEmpty(_filterText))
         {
             SetListingStatus(total + " items");
+            SyncListOverlay();
             return;
         }
         int shown = 0;
@@ -1869,6 +1932,7 @@ internal sealed class BrowseForm : Form
                 shown++;
         }
         SetListingStatus(shown + " of " + total + " items");
+        SyncListOverlay();
     }
 
     /// <summary>
