@@ -37,6 +37,11 @@ internal static class Prefs
         return Path.Combine(Dir(), "hidden.txt");
     }
 
+    private static string SortPath()
+    {
+        return Path.Combine(Dir(), "sort.txt");
+    }
+
     public static bool LoadShowHidden()
     {
         try
@@ -103,6 +108,53 @@ internal static class Prefs
                 default: text = "tiles"; break;
             }
             File.WriteAllText(ViewPath(), text);
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>Details-column sort. column is 0–3; asc true = ascending.</summary>
+    public static void LoadSort(out int column, out bool ascending)
+    {
+        column = 0;
+        ascending = true;
+        try
+        {
+            string path = SortPath();
+            if (!File.Exists(path))
+                return;
+            string text = File.ReadAllText(path).Trim();
+            if (string.IsNullOrEmpty(text))
+                return;
+            string[] parts = text.Split(',');
+            if (parts.Length < 1)
+                return;
+            int col;
+            if (!int.TryParse(parts[0].Trim(), out col))
+                return;
+            if (col < 0) col = 0;
+            if (col > 3) col = 3;
+            column = col;
+            if (parts.Length >= 2)
+            {
+                string a = parts[1].Trim().ToLowerInvariant();
+                ascending = !(a == "0" || a == "desc" || a == "false");
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public static void SaveSort(int column, bool ascending)
+    {
+        try
+        {
+            if (column < 0) column = 0;
+            if (column > 3) column = 3;
+            Directory.CreateDirectory(Dir());
+            File.WriteAllText(SortPath(), column + "," + (ascending ? "1" : "0"));
         }
         catch
         {

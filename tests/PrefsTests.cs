@@ -20,6 +20,7 @@ internal static class PrefsTests
             LegacyStrings();
             UnknownDefaultsToTiles();
             ShowHiddenRoundTrip();
+            SortRoundTrip();
         }
         finally
         {
@@ -70,6 +71,20 @@ internal static class PrefsTests
     {
         File.WriteAllText(_viewPath, "nope");
         Expect(Prefs.LoadViewMode() == BrowseViewMode.Tiles, "unknown → Tiles");
+    }
+
+    private static void SortRoundTrip()
+    {
+        int col;
+        bool asc;
+        Prefs.LoadSort(out col, out asc);
+        Expect(col == 0 && asc, "sort default name asc");
+        Prefs.SaveSort(2, false);
+        Prefs.LoadSort(out col, out asc);
+        Expect(col == 2 && !asc, "sort round-trip date desc");
+        Prefs.SaveSort(9, true);
+        Prefs.LoadSort(out col, out asc);
+        Expect(col == 3 && asc, "sort column clamps to 3");
     }
 
     private static void ShowHiddenRoundTrip()

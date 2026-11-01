@@ -25,6 +25,9 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] Filter with zero matches shows **No matching items** overlay; clear filter restores the list
 - [ ] New folder / Rename / Duplicate land selection on the new item after reload
 - [ ] Delete focuses a neighboring item (not a blank selection) when items remain
+- [ ] Status shows folder/file counts (e.g. `3 folders, 12 files`); multi-select shows `N selected`
+- [ ] Back restores prior selection and scroll position
+- [ ] Details column sort survives app restart
 - [ ] Tray → Show / Exit
 - [ ] Idle ~30s without activity closes pane (+ flyout if open)
 

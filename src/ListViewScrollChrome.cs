@@ -74,6 +74,53 @@ internal sealed class ListViewScrollChrome : IDisposable, IMessageFilter
         return true; // eat — avoid native + our handler double-scrolling
     }
 
+    /// <summary>Current native vertical scroll position (0 when unavailable).</summary>
+    public int GetVerticalPos()
+    {
+        if (_list == null || _list.IsDisposed || !_list.IsHandleCreated)
+            return 0;
+        try
+        {
+            SCROLLINFO si = new SCROLLINFO();
+            si.cbSize = Marshal.SizeOf(typeof(SCROLLINFO));
+            si.fMask = SIF_POS;
+            if (!GetScrollInfo(_list.Handle, SB_VERT, ref si))
+                return 0;
+            return si.nPos;
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Scroll so the native vertical position matches <paramref name="targetPos"/>.</summary>
+    public void ScrollToVerticalPos(int targetPos)
+    {
+        if (_list == null || _list.IsDisposed || !_list.IsHandleCreated)
+            return;
+        if (targetPos < 0)
+            targetPos = 0;
+        try
+        {
+            SyncFromList();
+            SCROLLINFO cur = new SCROLLINFO();
+            cur.cbSize = Marshal.SizeOf(typeof(SCROLLINFO));
+            cur.fMask = SIF_POS | SIF_PAGE | SIF_RANGE;
+            if (!GetScrollInfo(_list.Handle, SB_VERT, ref cur))
+                return;
+            int delta = targetPos - cur.nPos;
+            if (delta == 0)
+                return;
+            SendMessage(_list.Handle, LVM_SCROLL, IntPtr.Zero, (IntPtr)delta);
+            _lastPos = -1;
+            SyncFromList();
+        }
+        catch
+        {
+        }
+    }
+
     public void SyncFromList()
     {
         if (_list == null || _list.IsDisposed || !_list.IsHandleCreated)
