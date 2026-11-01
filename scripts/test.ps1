@@ -111,9 +111,23 @@ Run-Suite "RecentSourceTests" @(
 
 Run-Suite "ShellFileOpsTests" @(
     (Join-Path $srcDir "FileCopy.cs"),
+    (Join-Path $srcDir "ShellDragDrop.cs"),
     (Join-Path $srcDir "ShellFileOps.cs"),
     (Join-Path $testsDir "ShellFileOpsTests.cs")
 ) "ShellFileOpsTests.exe" $drawing
+
+Run-Suite "ShellDragDropTests" @(
+    (Join-Path $srcDir "FileCopy.cs"),
+    (Join-Path $srcDir "ShellDragDrop.cs"),
+    (Join-Path $testsDir "ShellDragDropTests.cs")
+) "ShellDragDropTests.exe" $drawing
+
+Run-Suite "BrowseSelectionRulesTests" @(
+    (Join-Path $srcDir "DirectoryModel.cs"),
+    (Join-Path $srcDir "ArchiveCatalog.cs"),
+    (Join-Path $srcDir "BrowseSelectionRules.cs"),
+    (Join-Path $testsDir "BrowseSelectionRulesTests.cs")
+) "BrowseSelectionRulesTests.exe" $core
 
 Run-Suite "CrashLogTests" @(
     (Join-Path $srcDir "CrashLog.cs"),

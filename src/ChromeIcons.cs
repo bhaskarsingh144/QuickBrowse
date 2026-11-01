@@ -25,6 +25,7 @@ internal static class ChromeIcons
     public static readonly Color OpenWithInk = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
     public static readonly Color CompressInk = Color.FromArgb(255, 0xF2, 0xC4, 0x6D);
     public static readonly Color ExtractInk = Color.FromArgb(255, 0xA8, 0xD5, 0xA2);
+    public static readonly Color MultiSelectInk = Color.FromArgb(255, 0x60, 0xCD, 0xFF);
 
     public static Bitmap Make(int size, Action<Graphics, int> draw)
     {
@@ -476,6 +477,37 @@ internal static class ChromeIcons
                 g.DrawEllipse(pen, 3.2f * u, 3.2f * u, 9.6f * u, 9.6f * u);
                 g.DrawLine(pen, 8f * u, 5.2f * u, 8f * u, 8.2f * u);
                 g.DrawLine(pen, 8f * u, 8.2f * u, 10.4f * u, 9.6f * u);
+            }
+        });
+    }
+
+    /// <summary>Checklist glyph for multi-select mode toggle.</summary>
+    public static Bitmap MultiSelect(int size)
+    {
+        return Make(size, delegate(Graphics g, int s)
+        {
+            float u = s / 16f;
+            using (Pen pen = new Pen(MultiSelectInk, Math.Max(1.3f, 1.35f * u)))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                pen.LineJoin = LineJoin.Round;
+                g.DrawRectangle(pen, 2.5f * u, 3f * u, 4.2f * u, 4.2f * u);
+                g.DrawRectangle(pen, 2.5f * u, 9f * u, 4.2f * u, 4.2f * u);
+                g.DrawLine(pen, 8.2f * u, 5.1f * u, 13.2f * u, 5.1f * u);
+                g.DrawLine(pen, 8.2f * u, 11.1f * u, 13.2f * u, 11.1f * u);
+            }
+            using (Pen check = new Pen(MultiSelectInk, Math.Max(1.4f, 1.4f * u)))
+            {
+                check.StartCap = LineCap.Round;
+                check.EndCap = LineCap.Round;
+                check.LineJoin = LineJoin.Round;
+                g.DrawLines(check, new PointF[]
+                {
+                    new PointF(3.2f * u, 5.1f * u),
+                    new PointF(4.2f * u, 6.2f * u),
+                    new PointF(6f * u, 3.8f * u)
+                });
             }
         });
     }

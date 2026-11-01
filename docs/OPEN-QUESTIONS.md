@@ -57,8 +57,8 @@
 - [x] **Enter folder / open file:** **single click/tap** opens.
 - [x] **Open file:** default verb via `ShellExecute` / `Process.Start`.
 - [x] **Context menu v0:** **minimal** — Open, Copy path, Delete, Show in Explorer.
-- [x] **Drag-drop v0:** **none**.
-- [x] **Multi-select:** **later**.
+- [x] **Drag-drop:** shipping — drag items out (CF_HDROP copy/move) and drop files into the current folder (Ctrl copy / Shift move). See `TEST-SELECT-DND.md`.
+- [x] **Multi-select:** shipping — header **Multi-select** toggle (off by default; single-click open unchanged). On: Ctrl/Shift/Ctrl+A, batch cut/copy/delete/send to/compress. See `TEST-SELECT-DND.md`.
 - [x] **Search:** in-folder name **Filter** in the address row (not Windows indexed Search).
 - [x] **Hidden / system files:** View menu **Show hidden items** (persisted); System / protected OS files stay hidden.
 - [x] **Network / OneDrive / libraries:** no special UI; Known Folder redirects OK.
@@ -114,7 +114,7 @@
 
 ## 10. Non-goals (v0)
 
-- Replace Explorer as default host; full ribbon; cloud sync UI; archive-as-folders; embedded terminal; shell namespace installers; global hotkey; FileSystemWatcher; pins/recents/DnD/multi-select.
+- Replace Explorer as default host; full ribbon; cloud sync UI; archive-as-folders; embedded terminal; shell namespace installers; global hotkey; FileSystemWatcher.
 
 ---
 
