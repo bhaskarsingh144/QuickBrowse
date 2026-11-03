@@ -33,6 +33,22 @@ internal static class DisplayScaleTests
         ExpectFloat(1f, DisplayScale.ComputeFit(fourK), 0.001f, "27\" 4K @150% Fit");
         ExpectFloat(1f, DisplayScale.ComputeTextFit(fourK), 0.001f, "27\" 4K @150% TextFit");
 
+        // 28" 4K desk — same path; must stay Fit=1 at 150 / 175 / 200% (not shrink like FHD laptop).
+        DisplayProfile desk28_150 = Profile(3840, 2160, 144f, 28.0f, false);
+        ExpectTrue(DisplayScale.IsLargeDesktop(desk28_150), "28\" 4K is large desktop");
+        ExpectFloat(1f, DisplayScale.ComputeFit(desk28_150), 0.001f, "28\" 4K @150% Fit");
+        ExpectFloat(1f, DisplayScale.ComputeTextFit(desk28_150), 0.001f, "28\" 4K @150% TextFit");
+
+        DisplayProfile desk28_175 = Profile(3840, 2160, 168f, 28.0f, false);
+        ExpectFloat(1f, DisplayScale.ComputeFit(desk28_175), 0.001f, "28\" 4K @175% Fit (was ~0.94)");
+
+        DisplayProfile desk28_200 = Profile(3840, 2160, 192f, 28.0f, false);
+        ExpectFloat(1f, DisplayScale.ComputeFit(desk28_200), 0.001f, "28\" 4K @200% Fit (was ~0.88)");
+
+        // 4K laptop still uses the soft laptop path, not desktop full Fit yank at 100%.
+        DisplayProfile fourKLaptop = Profile(3840, 2160, 96f, 15.6f, false);
+        ExpectTrue(!DisplayScale.IsLargeDesktop(fourKLaptop), "15.6\" 4K is not large desktop");
+
         // Logical height curve sanity (desktop diagonal → no laptop floor)
         ExpectFloat(0.88f, CallFitHeight(1080f), 0.001f, "curve 1080 → 0.88");
         ExpectFloat(0.74f, CallFitHeight(900f), 0.001f, "curve 900 → 0.74");
