@@ -71,6 +71,12 @@ internal static class DisplayScale
         float fit = FitFromLogicalHeight(p.LogicH);
         float scale = p.Dpi / 96f;
 
+        // Large desktop panels (e.g. 27–32" 4K): Windows DPI already sizes chrome.
+        // At 175–200% logical height looks like FHD and the curve would shrink DIPs
+        // further — leave Fit at 1 so a 28" 4K desk panel does not feel undersized.
+        if (IsLargeDesktop(p) && scale >= 1.25f && fit < 1f)
+            fit = 1f;
+
         float floor = LaptopFloor(p.DiagonalIn, p.SixteenTen);
         float panel = StandardPanelFloor(p.PhysW, p.PhysH, p.DiagonalIn, p.SixteenTen);
         float want = Math.Max(floor, panel);
@@ -80,7 +86,8 @@ internal static class DisplayScale
             // When Windows scale is already elevated, logical height dropped on purpose.
             // Do not yank Fit all the way back to the old laptop floor — that is what
             // made 16" FHD/FHD+ text feel huge while chrome stayed "fine".
-            if (scale >= 1.2f)
+            // Large desktops are handled above and keep full Fit.
+            if (scale >= 1.2f && !IsLargeDesktop(p))
                 fit = Math.Min(want, fit + 0.04f);
             else
                 fit = want;
@@ -94,6 +101,21 @@ internal static class DisplayScale
         if (fit < 0.62f)
             fit = 0.62f;
         return fit;
+    }
+
+    /// <summary>
+    /// External monitor / desktop class (≥24"), including 4K UHD desks (~27–32").
+    /// Excludes laptop-class diagonals even when native is 3840×2160.
+    /// </summary>
+    public static bool IsLargeDesktop(DisplayProfile p)
+    {
+        if (p.DiagonalIn >= 24f)
+            return true;
+        // 4K 16:9 with unknown EDID: treat as desktop (laptop 4K is usually ≤18").
+        if (Near(p.PhysW, 3840) && Near(p.PhysH, 2160)
+            && (p.DiagonalIn <= 0f || p.DiagonalIn > 18.5f))
+            return true;
+        return false;
     }
 
     /// <summary>
@@ -188,7 +210,13 @@ internal static class DisplayScale
         if (Near(w, 3840) && Near(h, 2400))
             return Laptopish(diagonalIn) ? 0.90f : 0f; // 4K 16:10 laptop
         if (Near(w, 3840) && Near(h, 2160))
-            return 0f; // 4K 16:9 — logical curve only (desktop or laptop)
+        {
+            // Desktop 4K (27–32" class, e.g. 28"): keep full Fit; Windows scale owns size.
+            if (diagonalIn >= 24f || diagonalIn <= 0f)
+                return 1f;
+            // Rare 4K 16:9 laptop — soft floor only.
+            return Laptopish(diagonalIn) ? 0.90f : 0f;
+        }
         if (Near(w, 3440) && Near(h, 1440))
             return 0f;
         if (Near(w, 1366) && Near(h, 768))
