@@ -21,7 +21,7 @@ Pins: see [`TEST-PINS.md`](TEST-PINS.md). Recent: see [`TEST-RECENT.md`](TEST-RE
 - [ ] View dropdown: Tiles / Content / Details + Show hidden; prefs survive restart
 - [ ] This PC: New folder disabled; Paste blocked; Show hidden does not change drive list
 - [ ] Access-denied / empty folder show status text **and** a centered in-pane overlay (Retry on errors)
-- [ ] Large folders show a **Loading…** overlay (not a blank list) until items appear
+- [ ] Large folders show a **Loading…** overlay with a pulsing shade / sweeping bar until items appear
 - [ ] Filter with zero matches shows **No matching items** overlay; clear filter restores the list
 - [ ] New folder / Rename / Duplicate land selection on the new item after reload
 - [ ] Delete focuses a neighboring item (not a blank selection) when items remain
