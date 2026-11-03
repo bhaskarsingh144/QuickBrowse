@@ -25,9 +25,11 @@ Run `scripts\build.ps1`, `scripts\test.ps1`, then launch `bin\QuickBrowse.exe`.
 ## Mode ON — selection
 
 - [ ] Click selects one item and does **not** open it
-- [ ] Ctrl+click toggles items; Shift+click selects a range
-- [ ] Ctrl+A selects everything (not while typing in path/filter box)
-- [ ] Status bar shows "N selected" when more than one is selected; returns to "N items" when ≤ 1
+- [ ] Plain click on another item **adds** it (selection chrome stays on earlier items) — no Ctrl required
+- [ ] Clicking a selected item again toggles it off
+- [ ] Shift+click selects a range; Ctrl+A selects everything (not while typing in path/filter box)
+- [ ] Bluish selected fill/border visible on **every** selected tile at once
+- [ ] Status bar shows "N selected" when more than one is selected; returns to folder/file counts when ≤ 1
 - [ ] Esc with a selection clears it (pane stays open); Esc again closes the pane
 - [ ] Esc still cancels path edit / clears filter first
 - [ ] Double-click a folder/file opens it

@@ -16,6 +16,10 @@ internal static class UiTheme
     public static readonly Color Muted = Color.FromArgb(255, 0x9A, 0xA1, 0xAC);
     public static readonly Color Accent = Color.FromArgb(255, 0x60, 0xCD, 0xFF); // Win11 accent-ish
     public static readonly Color AccentSoft = Color.FromArgb(40, 0x60, 0xCD, 0xFF);
+    /// <summary>List selection fill — bluish, clearly stronger than Hover/Raised.</summary>
+    public static readonly Color Selected = Color.FromArgb(255, 0x2A, 0x42, 0x58);
+    /// <summary>Accent outline for selected tiles/rows.</summary>
+    public static readonly Color SelectedBorder = Color.FromArgb(220, 0x60, 0xCD, 0xFF);
     public static readonly Color Hover = Color.FromArgb(255, 0x3A, 0x3F, 0x48);
     public static readonly Color Press = Color.FromArgb(255, 0x46, 0x4C, 0x56);
     public static readonly Color Chip = Color.FromArgb(255, 0x32, 0x36, 0x3E);

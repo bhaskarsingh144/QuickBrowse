@@ -84,6 +84,11 @@ internal sealed class BrowseForm : Form
     private bool _suppressClickOpen;
     private bool _leftPressActive;
     private bool _dragFromSelf;
+    private readonly List<string> _multiCommitPaths = new List<string>();
+    private bool _multiPressArmed;
+    private bool _multiAdjusting;
+    private bool _pressWasInCommit;
+    private MultiSelectClickFilter _multiClickFilter;
     private long _menuClosedTick;
     private int _sortColumn;
     private bool _sortAsc = true;
@@ -323,7 +328,9 @@ internal sealed class BrowseForm : Form
         _list.DragOver += OnListDragOver;
         _list.DragDrop += OnListDragDrop;
         _list.DragLeave += OnListDragLeave;
-        _list.SelectedIndexChanged += delegate { SyncActionButtons(); UpdateSelectionStatus(); };
+        _list.SelectedIndexChanged += OnListSelectedIndexChanged;
+        _multiClickFilter = new MultiSelectClickFilter(this);
+        Application.AddMessageFilter(_multiClickFilter);
         EnsureColumns();
         ApplyViewMode();
         _listScrollChrome = new ListViewScrollChrome(_list, _listScroll);
@@ -393,6 +400,8 @@ internal sealed class BrowseForm : Form
 
     public float Dpi { get { return _dpi; } }
     public float Fit { get { return _fit; } }
+    internal ListView ListViewForMultiSelect { get { return _list; } }
+    internal bool MultiSelectModeActive { get { return _multiSelectMode; } }
 
     protected override bool ShowWithoutActivation
     {
@@ -424,6 +433,11 @@ internal sealed class BrowseForm : Form
     protected override void OnFormClosed(FormClosedEventArgs e)
     {
         CloseViewMenu();
+        if (_multiClickFilter != null)
+        {
+            Application.RemoveMessageFilter(_multiClickFilter);
+            _multiClickFilter = null;
+        }
         if (_listScrollChrome != null)
             _listScrollChrome.Dispose();
         if (_uiFont != null) { _uiFont.Dispose(); _uiFont = null; }
@@ -442,6 +456,117 @@ internal sealed class BrowseForm : Form
             _itemTip.Dispose();
         _tips.Dispose();
         base.OnFormClosed(e);
+    }
+
+    /// <summary>
+    /// Arm multi-select before ListView processes WM_LBUTTONDOWN so we keep the prior selection snapshot.
+    /// </summary>
+    internal void ArmMultiSelectPress()
+    {
+        if (!_multiSelectMode || _multiPressArmed)
+            return;
+        // Snapshot is already in _multiCommitPaths from the last idle selection change.
+        _multiPressArmed = true;
+        _leftPressActive = true;
+    }
+
+    private void OnListSelectedIndexChanged(object sender, EventArgs e)
+    {
+        if (_multiSelectMode && !_multiAdjusting && !_multiPressArmed && !_leftPressActive)
+            CommitMultiSelectionPaths();
+        SyncActionButtons();
+        UpdateSelectionStatus();
+        _list.Invalidate();
+    }
+
+    private void CommitMultiSelectionPaths()
+    {
+        _multiCommitPaths.Clear();
+        foreach (ListViewItem item in _list.SelectedItems)
+        {
+            DirEntry entry = item.Tag as DirEntry;
+            if (entry != null && !string.IsNullOrEmpty(entry.FullPath))
+                _multiCommitPaths.Add(entry.FullPath);
+        }
+    }
+
+    private void ApplyMultiSelectionPaths(IList<string> paths)
+    {
+        _multiAdjusting = true;
+        try
+        {
+            _list.BeginUpdate();
+            ClearListSelection();
+            if (paths == null || paths.Count == 0)
+                return;
+            for (int i = 0; i < _list.Items.Count; i++)
+            {
+                ListViewItem item = _list.Items[i];
+                DirEntry entry = item.Tag as DirEntry;
+                if (entry == null || string.IsNullOrEmpty(entry.FullPath))
+                    continue;
+                for (int p = 0; p < paths.Count; p++)
+                {
+                    if (string.Equals(entry.FullPath, paths[p], StringComparison.OrdinalIgnoreCase))
+                    {
+                        item.Selected = true;
+                        break;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            _list.EndUpdate();
+            _multiAdjusting = false;
+        }
+    }
+
+    private void ApplyMultiSelectClick(ListViewItem hit)
+    {
+        Keys mods = Control.ModifierKeys;
+        if ((mods & Keys.Shift) != Keys.None)
+        {
+            // Keep native range selection; commit whatever ListView produced.
+            CommitMultiSelectionPaths();
+            return;
+        }
+
+        if (hit == null)
+        {
+            ClearListSelection();
+            _multiCommitPaths.Clear();
+            return;
+        }
+
+        DirEntry hitEntry = hit.Tag as DirEntry;
+        string hitPath = hitEntry != null ? hitEntry.FullPath : null;
+        List<string> next = new List<string>(_multiCommitPaths);
+        // Multi-select mode: plain click toggles/adds (does not replace the rest).
+        bool had = false;
+        if (!string.IsNullOrEmpty(hitPath))
+        {
+            for (int i = next.Count - 1; i >= 0; i--)
+            {
+                if (!string.Equals(next[i], hitPath, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                next.RemoveAt(i);
+                had = true;
+            }
+        }
+        else
+            had = _pressWasInCommit;
+
+        if (!had && !string.IsNullOrEmpty(hitPath))
+            next.Add(hitPath);
+
+        ApplyMultiSelectionPaths(next);
+        CommitMultiSelectionPaths();
+        if (hit.ListView == _list)
+            hit.Focused = true;
+        SyncActionButtons();
+        UpdateSelectionStatus();
+        _list.Invalidate();
     }
 
     public bool ContainsScreenPoint(Point pt)
@@ -2263,6 +2388,40 @@ internal sealed class BrowseForm : Form
         DrawTilesItem(e);
     }
 
+    private void PaintListItemChrome(Graphics g, Rectangle bounds, bool selected, bool hot, bool rounded)
+    {
+        int radius = Px(ChromeVisual.TileCornerDip);
+        if (selected)
+        {
+            if (rounded)
+            {
+                ChromeVisual.FillRound(g, bounds, radius, UiTheme.Selected);
+                ChromeVisual.DrawRoundBorder(g, bounds, radius, UiTheme.SelectedBorder);
+            }
+            else
+            {
+                using (SolidBrush bg = new SolidBrush(UiTheme.Selected))
+                    g.FillRectangle(bg, bounds);
+                using (Pen pen = new Pen(UiTheme.SelectedBorder))
+                    g.DrawRectangle(pen, bounds.X, bounds.Y, Math.Max(0, bounds.Width - 1), Math.Max(0, bounds.Height - 1));
+            }
+            return;
+        }
+        if (hot)
+        {
+            if (rounded)
+                ChromeVisual.FillRound(g, bounds, radius, UiTheme.Hover);
+            else
+            {
+                using (SolidBrush bg = new SolidBrush(UiTheme.Hover))
+                    g.FillRectangle(bg, bounds);
+            }
+            return;
+        }
+        using (SolidBrush bg = new SolidBrush(UiTheme.Bg))
+            g.FillRectangle(bg, bounds);
+    }
+
     private void DrawTilesItem(DrawListViewItemEventArgs e)
     {
         Graphics g = e.Graphics;
@@ -2271,13 +2430,7 @@ internal sealed class BrowseForm : Form
 
         bool selected = e.Item.Selected;
         bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
-        if (selected || hot)
-            ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
-        else
-        {
-            using (SolidBrush bg = new SolidBrush(UiTheme.Bg))
-                g.FillRectangle(bg, e.Bounds);
-        }
+        PaintListItemChrome(g, e.Bounds, selected, hot, true);
 
         DirEntry entry = e.Item.Tag as DirEntry;
         Image img = ResolveLargeImage(e.Item);
@@ -2319,13 +2472,7 @@ internal sealed class BrowseForm : Form
 
         bool selected = e.Item.Selected;
         bool hot = !selected && (IsHotItem(e.Item) || (e.State & ListViewItemStates.Hot) != 0);
-        if (selected || hot)
-            ChromeVisual.FillRound(g, e.Bounds, Px(ChromeVisual.TileCornerDip), selected ? UiTheme.Raised : UiTheme.Hover);
-        else
-        {
-            using (SolidBrush bg = new SolidBrush(UiTheme.Bg))
-                g.FillRectangle(bg, e.Bounds);
-        }
+        PaintListItemChrome(g, e.Bounds, selected, hot, true);
 
         DirEntry entry = e.Item.Tag as DirEntry;
         Image img = ResolveLargeImage(e.Item);
@@ -2398,8 +2545,14 @@ internal sealed class BrowseForm : Form
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
         bool selected = e.Item.Selected;
         bool hot = !selected && IsHotItem(e.Item);
-        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Raised : (hot ? UiTheme.Hover : UiTheme.Bg)))
+        using (SolidBrush bg = new SolidBrush(selected ? UiTheme.Selected : (hot ? UiTheme.Hover : UiTheme.Bg)))
             g.FillRectangle(bg, e.Bounds);
+        if (selected && e.ColumnIndex == 0)
+        {
+            int bar = Math.Max(2, Px(3));
+            using (SolidBrush accent = new SolidBrush(UiTheme.Accent))
+                g.FillRectangle(accent, e.Bounds.X, e.Bounds.Y + 1, bar, Math.Max(0, e.Bounds.Height - 2));
+        }
 
         Image img = null;
         if (!string.IsNullOrEmpty(e.Item.ImageKey) && _smallImages.Images.ContainsKey(e.Item.ImageKey))
@@ -2436,12 +2589,19 @@ internal sealed class BrowseForm : Form
             {
                 _suppressClickOpen = false;
                 _leftPressActive = false;
+                _multiPressArmed = false;
+                if (_multiSelectMode)
+                    CommitMultiSelectionPaths();
                 return;
             }
             _leftPressActive = false;
-            // Multi-select mode: native selection already ran; never open on click.
             if (_multiSelectMode)
+            {
+                // Plain clicks toggle/add; Shift keeps native range. Never open on click.
+                ApplyMultiSelectClick(FindItemAtPoint(e.Location));
+                _multiPressArmed = false;
                 return;
+            }
 
             ListViewItem leftHit = FindItemAtPoint(e.Location);
             if (leftHit == null)
@@ -2595,11 +2755,20 @@ internal sealed class BrowseForm : Form
         _multiSelectMode = on;
         _list.MultiSelect = on;
         _multiSelectBtn.Selected = on;
-        _tips.SetToolTip(_multiSelectBtn, on ? "Multi-select mode (on)" : "Multi-select mode (off)");
+        _tips.SetToolTip(_multiSelectBtn, on
+            ? "Multi-select mode (on) — click to add/toggle, Shift for range"
+            : "Multi-select mode (off)");
         if (!on)
+        {
             ClearListSelection();
+            _multiCommitPaths.Clear();
+            _multiPressArmed = false;
+        }
+        else
+            CommitMultiSelectionPaths();
         SyncActionButtons();
         UpdateSelectionStatus();
+        _list.Invalidate();
     }
 
     private void UpdateSelectionStatus()
@@ -2635,6 +2804,25 @@ internal sealed class BrowseForm : Form
         _pressItem = FindItemAtPoint(e.Location);
         _leftPressActive = true;
         _suppressClickOpen = false;
+        if (_multiSelectMode)
+        {
+            _pressWasInCommit = false;
+            if (_pressItem != null)
+            {
+                DirEntry pe = _pressItem.Tag as DirEntry;
+                string path = pe != null ? pe.FullPath : null;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    for (int i = 0; i < _multiCommitPaths.Count; i++)
+                    {
+                        if (!string.Equals(_multiCommitPaths[i], path, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        _pressWasInCommit = true;
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     /// <summary>Starts a file drag when the pointer left the press threshold. True when a drag ran.</summary>
@@ -3408,5 +3596,32 @@ internal sealed class BrowseForm : Form
             return;
         if (!ShellFileOps.ShowProperties(Handle, _currentPath))
             SetActionStatus("Could not open Properties");
+    }
+}
+
+/// <summary>
+/// Arms multi-select before ListView handles WM_LBUTTONDOWN (so the prior selection snapshot is kept).
+/// </summary>
+internal sealed class MultiSelectClickFilter : IMessageFilter
+{
+    private const int WmLButtonDown = 0x0201;
+    private readonly BrowseForm _form;
+
+    public MultiSelectClickFilter(BrowseForm form)
+    {
+        _form = form;
+    }
+
+    public bool PreFilterMessage(ref Message m)
+    {
+        if (m.Msg != WmLButtonDown || _form == null || _form.IsDisposed)
+            return false;
+        ListView list = _form.ListViewForMultiSelect;
+        if (list == null || !list.IsHandleCreated || m.HWnd != list.Handle)
+            return false;
+        if (!_form.MultiSelectModeActive)
+            return false;
+        _form.ArmMultiSelectPress();
+        return false;
     }
 }
