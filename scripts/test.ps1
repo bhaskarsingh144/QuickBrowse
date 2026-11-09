@@ -103,8 +103,14 @@ Run-Suite "PinSessionTests" @(
     (Join-Path $testsDir "PinSessionTests.cs")
 ) "PinSessionTests.exe" $core
 
+Run-Suite "AppIdResolverTests" @(
+    (Join-Path $srcDir "AppIdResolver.cs"),
+    (Join-Path $testsDir "AppIdResolverTests.cs")
+) "AppIdResolverTests.exe" $core
+
 Run-Suite "RecentSourceTests" @(
     (Join-Path $srcDir "PinStore.cs"),
+    (Join-Path $srcDir "AppIdResolver.cs"),
     (Join-Path $srcDir "RecentSource.cs"),
     (Join-Path $testsDir "RecentSourceTests.cs")
 ) "RecentSourceTests.exe" $core
@@ -179,6 +185,9 @@ Run-Suite "SendToCatalogTests" @(
 ) "SendToCatalogTests.exe" $core
 
 Run-Suite "OpenInCatalogTests" @(
+    (Join-Path $srcDir "PinStore.cs"),
+    (Join-Path $srcDir "AppIdResolver.cs"),
+    (Join-Path $srcDir "RecentSource.cs"),
     (Join-Path $srcDir "OpenInCatalog.cs"),
     (Join-Path $testsDir "OpenInCatalogTests.cs")
 ) "OpenInCatalogTests.exe" $core

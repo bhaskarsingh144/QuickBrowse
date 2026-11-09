@@ -30,14 +30,15 @@ internal sealed class RecentBucketGroup
 }
 
 /// <summary>
-/// Reads Windows Recent Items (FOLDERID_Recent .lnk shortcuts). Does not write into that folder
-/// except via SHAddToRecentDocs when QuickBrowse opens something.
+/// Reads Windows Recent Items (FOLDERID_Recent .lnk shortcuts). Writes via SHAddToRecentDocs
+/// (system Recent + optional SHARD_APPIDINFO for Explorer / app jump lists).
 /// </summary>
 internal static class RecentSource
 {
     public const int DefaultCap = 36;
 
     private const uint SHARD_PATHW = 0x00000003;
+    private const uint SHARD_APPIDINFO = 0x00000007;
     private const uint STGM_READ = 0x00000000;
     private const uint SLGP_RAWPATH = 0x4;
 
@@ -178,18 +179,99 @@ internal static class RecentSource
 
     public static void NotifyAccess(string path)
     {
-        string norm = PinStore.Normalize(path);
-        if (norm == null || IsExecutable(norm))
+        string norm = NormalizeExisting(path);
+        if (norm == null)
             return;
         try
         {
-            if (!File.Exists(norm) && !Directory.Exists(norm))
-                return;
-            SHAddToRecentDocs(SHARD_PATHW, norm);
+            SHAddToRecentDocsPath(SHARD_PATHW, norm);
         }
         catch
         {
         }
+    }
+
+    /// <summary>Folder browse / open — system Recent + Explorer jump list.</summary>
+    public static void NotifyFolderAccess(string path)
+    {
+        string norm = NormalizeExisting(path);
+        if (norm == null)
+            return;
+        if (!Directory.Exists(norm))
+            return;
+        NotifyAccess(norm);
+        NotifyAccessForApp(norm, AppIdResolver.ExplorerAppId);
+    }
+
+    /// <summary>File opened with the Windows default association — system Recent + handler jump list.</summary>
+    public static void NotifyFileAccess(string path)
+    {
+        string norm = NormalizeExisting(path);
+        if (norm == null)
+            return;
+        if (!File.Exists(norm))
+            return;
+        NotifyAccess(norm);
+        string appId = AppIdResolver.ResolveForDocument(norm);
+        if (!string.IsNullOrEmpty(appId))
+            NotifyAccessForApp(norm, appId);
+    }
+
+    /// <summary>File opened in a specific app (Open with) — system Recent + that app's jump list.</summary>
+    public static void NotifyFileOpenedWith(string path, string handlerExePath)
+    {
+        string norm = NormalizeExisting(path);
+        if (norm == null)
+            return;
+        if (!File.Exists(norm) && !Directory.Exists(norm))
+            return;
+        NotifyAccess(norm);
+        if (string.IsNullOrEmpty(handlerExePath))
+            return;
+        string appId = AppIdResolver.ResolveForExe(handlerExePath);
+        if (!string.IsNullOrEmpty(appId))
+            NotifyAccessForApp(norm, appId);
+    }
+
+    /// <summary>Adds path to the Automatic Destinations list for the given AppUserModelID.</summary>
+    public static void NotifyAccessForApp(string path, string appUserModelId)
+    {
+        string norm = NormalizeExisting(path);
+        if (norm == null || string.IsNullOrEmpty(appUserModelId))
+            return;
+        try
+        {
+            SHARDAPPIDINFO info = new SHARDAPPIDINFO();
+            info.pszPath = norm;
+            info.pszAppID = appUserModelId;
+            SHAddToRecentDocsAppId(SHARD_APPIDINFO, ref info);
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>Pure guard used by tests — returns normalized path or null when notify should no-op.</summary>
+    public static string NormalizeForNotify(string path)
+    {
+        return NormalizeExisting(path);
+    }
+
+    private static string NormalizeExisting(string path)
+    {
+        string norm = PinStore.Normalize(path);
+        if (norm == null || IsExecutable(norm))
+            return null;
+        try
+        {
+            if (!File.Exists(norm) && !Directory.Exists(norm))
+                return null;
+        }
+        catch
+        {
+            return null;
+        }
+        return norm;
     }
 
     /// <summary>
@@ -369,8 +451,20 @@ internal static class RecentSource
         }
     }
 
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern void SHAddToRecentDocs(uint uFlags, string pv);
+    [DllImport("shell32.dll", EntryPoint = "SHAddToRecentDocs", CharSet = CharSet.Unicode)]
+    private static extern void SHAddToRecentDocsPath(uint uFlags, string pv);
+
+    [DllImport("shell32.dll", EntryPoint = "SHAddToRecentDocs", CharSet = CharSet.Unicode)]
+    private static extern void SHAddToRecentDocsAppId(uint uFlags, ref SHARDAPPIDINFO pv);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SHARDAPPIDINFO
+    {
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string pszPath;
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string pszAppID;
+    }
 
     [ComImport]
     [Guid("00021401-0000-0000-C000-000000000046")]

@@ -19,6 +19,8 @@ internal static class RecentSourceTests
         GroupByDateBucketOrder();
         FormatRelativeTimeShapes();
         DefaultCapRaised();
+        NormalizeForNotifyGuards();
+        NotifyAccessForAppNoOps();
 
         if (_failed != 0)
             Environment.Exit(1);
@@ -134,6 +136,38 @@ internal static class RecentSourceTests
     private static void DefaultCapRaised()
     {
         Expect(RecentSource.DefaultCap >= 36, "default cap 36");
+    }
+
+    private static void NormalizeForNotifyGuards()
+    {
+        Expect(RecentSource.NormalizeForNotify(null) == null, "null path");
+        Expect(RecentSource.NormalizeForNotify("") == null, "empty path");
+        Expect(RecentSource.NormalizeForNotify(@"C:\Windows\notepad.exe") == null, "exe skipped");
+        string missing = Path.Combine(Path.GetTempPath(), "QB_Recent_MissingFile_" + Guid.NewGuid().ToString("N") + ".txt");
+        Expect(RecentSource.NormalizeForNotify(missing) == null, "missing file");
+        string dir = Path.Combine(Path.GetTempPath(), "QB_Recent_Dir_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string norm = RecentSource.NormalizeForNotify(dir);
+            Expect(!string.IsNullOrEmpty(norm), "existing dir ok");
+        }
+        finally
+        {
+            try { Directory.Delete(dir); } catch { }
+        }
+    }
+
+    private static void NotifyAccessForAppNoOps()
+    {
+        // Must not throw on null/empty AppID or missing paths (CI has no shell side effects required).
+        RecentSource.NotifyAccessForApp(null, AppIdResolver.ExplorerAppId);
+        RecentSource.NotifyAccessForApp(@"C:\Windows", null);
+        RecentSource.NotifyAccessForApp(@"C:\Windows", "");
+        RecentSource.NotifyFolderAccess(null);
+        RecentSource.NotifyFileAccess(null);
+        RecentSource.NotifyFileOpenedWith(null, @"C:\Windows\explorer.exe");
+        Expect(true, "notify no-ops");
     }
 
     private static RecentEntry Entry(string path, bool dir, DateTime utc)

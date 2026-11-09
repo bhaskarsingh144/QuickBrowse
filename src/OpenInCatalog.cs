@@ -74,6 +74,7 @@ internal static class OpenInCatalog
                 Arguments = "\"" + path + "\"",
                 UseShellExecute = false
             });
+            RecentSource.NotifyFileOpenedWith(path, app.ExePath);
             return true;
         }
         catch
