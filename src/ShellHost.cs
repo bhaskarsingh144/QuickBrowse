@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 
 /// <summary>
@@ -141,14 +142,14 @@ internal sealed class ShellHost : ApplicationContext
 
         if (_session.LastRecentActivate == RecentActivateKind.Folder)
         {
-            RecentSource.NotifyAccess(_session.LastRecentPath);
+            RecentSource.NotifyFolderAccess(_session.LastRecentPath);
             _pane.NavigateTo(_session.ActivePath, PinStore.TitleFromPath(_session.ActivePath));
             SetPaneVisible(true);
         }
         else if (_session.LastRecentActivate == RecentActivateKind.File)
         {
             string launch = _session.LastRecentPath;
-            RecentSource.NotifyAccess(launch);
+            RecentSource.NotifyFileAccess(launch);
             try
             {
                 Process.Start(new ProcessStartInfo(launch) { UseShellExecute = true });
@@ -164,7 +165,19 @@ internal sealed class ShellHost : ApplicationContext
 
     public void NotifyRecentAccess(string path)
     {
-        RecentSource.NotifyAccess(path);
+        if (string.IsNullOrEmpty(path))
+            return;
+        try
+        {
+            if (Directory.Exists(path))
+                RecentSource.NotifyFolderAccess(path);
+            else
+                RecentSource.NotifyFileAccess(path);
+        }
+        catch
+        {
+            RecentSource.NotifyAccess(path);
+        }
     }
 
     public void OnPlaceClicked(int index, PlaceEntry place)
@@ -274,7 +287,7 @@ internal sealed class ShellHost : ApplicationContext
         {
             // In-pane navigation: track path for pin toolbar; drop place chip highlight.
             _session.OpenPath(path);
-            RecentSource.NotifyAccess(path);
+            RecentSource.NotifyFolderAccess(path);
             _rail.SetActivePlace(-1);
             if (_pins.Contains(path))
                 _rail.SetPinsSelected(true);
