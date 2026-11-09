@@ -2998,9 +2998,9 @@ internal sealed class BrowseForm : Form
         if (entry == null || string.IsNullOrEmpty(entry.FullPath) || entry.IsDrive)
             return;
         if (!OpenInCatalog.LaunchById(appId, entry.FullPath))
-            SetActionStatus("Could not open in " + appId);
+            SetActionStatus("Could not open with " + appId);
         else
-            SetActionStatus("Opened in " + appId);
+            SetActionStatus("Opened with " + appId);
     }
 
     private void OnSendToRequested(string destId)

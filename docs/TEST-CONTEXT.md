@@ -17,7 +17,7 @@ Run `scripts\test.ps1` then `scripts\build.ps1` / launch `bin\QuickBrowse.exe`.
 ## Item menu
 
 - [ ] Right-click folder/file — **rounded** corners
-- [ ] Open; **Open with** cascade (handlers + Choose another app…); **Open in** (Cursor / VS Code / IntelliJ / etc. when installed)
+- [ ] Open; single **Open with** cascade (no separate Open in) — type-relevant apps + **Choose another app…** on files; folders get editors/IDEs only
 - [ ] Pin (folders) / Send to ▸ (Desktop / Documents / Downloads + removable drives) / Compress ▸ / Extract ▸
 - [ ] Copy path / Copy name / Copy as path / Copy SHA-256 (files) / Duplicate / Create shortcut
 - [ ] Open in Terminal ▸ (folders) / Run as administrator (exe/bat/ps1)
@@ -37,7 +37,18 @@ Run `scripts\test.ps1` then `scripts\build.ps1` / launch `bin\QuickBrowse.exe`.
 - [ ] Separate **Cut / Copy / Paste / Delete** chips (no clipboard dropdown)
 - [ ] Enable rules match selection + clipboard; Ctrl+C / Ctrl+X / Ctrl+V still work
 
+## Open with type matrix
+
+- [ ] `.mp4` / video — VLC / PotPlayer / MPC-HC when installed; not Excel/Word; Choose another app… present
+- [ ] `.pdf` — Edge / Acrobat / Sumatra when installed; not VLC unless it is the default assoc
+- [ ] `.xlsx` — Excel when installed
+- [ ] `.txt` / `.cs` — editors (Cursor / VS Code / Notepad++ / …)
+- [ ] Folder — Open with lists editors only (no Choose another app…)
+- [ ] Picking the default-assoc row launches that exe (not “Could not open in assoc”)
+- [ ] Successful Open with updates Recent + that app’s jump list (see TEST-RECENT.md)
+
 ## Regression
 
 - [ ] No return of in-process `IContextMenu` crashes
 - [ ] QuickView + JumpDock unaffected
+- [ ] No duplicate **Open in** menu item

@@ -31,7 +31,6 @@ internal sealed class BrowseContextMenu : IDisposable
 
     private readonly ToolStripMenuItem _openItem;
     private readonly ToolStripMenuItem _openWithItem;
-    private readonly ToolStripMenuItem _openInItem;
     private readonly ToolStripMenuItem _pinItem;
     private readonly ToolStripMenuItem _sendToItem;
     private readonly ToolStripMenuItem _compressItem;
@@ -128,7 +127,6 @@ internal sealed class BrowseContextMenu : IDisposable
 
         _openItem = Add(_itemMenu, "Open", "open", delegate { Fire(OpenRequested); });
         _openWithItem = Add(_itemMenu, "Open with", "openwith", null);
-        _openInItem = Add(_itemMenu, "Open in", "open", null);
         _pinItem = Add(_itemMenu, "Pin folder", "pin", delegate { Fire(PinToggleRequested); });
         _itemMenu.Items.Add(new ToolStripSeparator());
 
@@ -149,7 +147,6 @@ internal sealed class BrowseContextMenu : IDisposable
         _propsItem = Add(_itemMenu, "Properties", null, delegate { Fire(PropertiesRequested); });
 
         StyleDrop(_openWithItem);
-        StyleDrop(_openInItem);
         StyleDrop(_sendToItem);
         StyleDrop(_compressItem);
         StyleDrop(_extractItem);
@@ -277,19 +274,13 @@ internal sealed class BrowseContextMenu : IDisposable
         _openItem.Enabled = single && caps.CanOpen;
 
         RebuildOpenWith(single ? first : null);
-        RebuildOpenIn(single ? first : null);
         RebuildSendTo();
         RebuildCompress();
         RebuildExtract(single ? first : null);
         RebuildTerminal(_terminalItem);
 
-        _openWithItem.Visible = caps.CanOpenWith;
-        _openWithItem.Enabled = caps.CanOpenWith;
-        if (!caps.CanOpenIn)
-        {
-            _openInItem.Visible = false;
-            _openInItem.Enabled = false;
-        }
+        _openWithItem.Visible = caps.CanOpenWith && _openWithItem.DropDownItems.Count > 0;
+        _openWithItem.Enabled = _openWithItem.Visible;
 
         _pinItem.Visible = caps.CanPin;
         _pinItem.Enabled = caps.CanPin;
@@ -351,52 +342,27 @@ internal sealed class BrowseContextMenu : IDisposable
     private void RebuildOpenWith(DirEntry entry)
     {
         _openWithItem.DropDownItems.Clear();
-        bool isFile = entry != null && !entry.IsDirectory && !entry.IsDrive
-            && !string.IsNullOrEmpty(entry.FullPath);
-        _openWithItem.Visible = isFile;
-        _openWithItem.Enabled = isFile;
-        if (!isFile)
+        bool hasPath = entry != null && !string.IsNullOrEmpty(entry.FullPath) && !entry.IsDrive;
+        if (!hasPath)
             return;
 
-        IList<OpenInApp> handlers = OpenInCatalog.HandlersForExtension(entry.FullPath);
+        bool isFile = !entry.IsDirectory;
+        IList<OpenInApp> handlers = OpenInCatalog.HandlersFor(entry.FullPath);
         for (int i = 0; i < handlers.Count; i++)
         {
             OpenInApp app = handlers[i];
             string id = app.Id;
-            ToolStripMenuItem item = MakeDropItem(app.Title, delegate
+            _openWithItem.DropDownItems.Add(MakeDropItem(app.Title, delegate { FireOpenIn(id); }));
+        }
+        if (isFile)
+        {
+            if (_openWithItem.DropDownItems.Count > 0)
+                _openWithItem.DropDownItems.Add(new ToolStripSeparator());
+            _openWithItem.DropDownItems.Add(MakeDropItem("Choose another app…", delegate
             {
-                FireOpenIn(id);
-            });
-            _openWithItem.DropDownItems.Add(item);
+                Fire(OpenWithRequested);
+            }));
         }
-        if (_openWithItem.DropDownItems.Count > 0)
-            _openWithItem.DropDownItems.Add(new ToolStripSeparator());
-        _openWithItem.DropDownItems.Add(MakeDropItem("Choose another app…", delegate
-        {
-            Fire(OpenWithRequested);
-        }));
-    }
-
-    private void RebuildOpenIn(DirEntry entry)
-    {
-        _openInItem.DropDownItems.Clear();
-        bool hasPath = entry != null && !string.IsNullOrEmpty(entry.FullPath) && !entry.IsDrive;
-        _openInItem.Visible = hasPath;
-        if (!hasPath)
-        {
-            _openInItem.Enabled = false;
-            return;
-        }
-
-        IList<OpenInApp> apps = OpenInCatalog.DetectedApps();
-        for (int i = 0; i < apps.Count; i++)
-        {
-            OpenInApp app = apps[i];
-            string id = app.Id;
-            _openInItem.DropDownItems.Add(MakeDropItem(app.Title, delegate { FireOpenIn(id); }));
-        }
-        _openInItem.Enabled = _openInItem.DropDownItems.Count > 0;
-        _openInItem.Visible = _openInItem.DropDownItems.Count > 0;
     }
 
     private void RebuildSendTo()
