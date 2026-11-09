@@ -130,9 +130,26 @@ internal static class OpenInCatalog
 
     public static bool Launch(OpenInApp app, string path)
     {
-        if (app == null || string.IsNullOrEmpty(app.ExePath) || string.IsNullOrEmpty(path))
+        if (app == null || string.IsNullOrEmpty(path))
             return false;
-        if (!File.Exists(app.ExePath))
+
+        // Default association must go through the shell (same as Open), not exe+args.
+        // UWP / COM / delegate handlers often fail when spawned as FileName=exe Arguments=doc.
+        if (string.Equals(app.Id, "assoc", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+                RecentSource.NotifyFileAccess(path);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        if (string.IsNullOrEmpty(app.ExePath) || !File.Exists(app.ExePath))
             return false;
         try
         {

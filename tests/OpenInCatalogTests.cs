@@ -17,6 +17,7 @@ internal static class OpenInCatalogTests
         HandlersDedupesByExe();
         LaunchRejectsBadInput();
         LaunchByExePathWorks();
+        AssocLaunchUsesShellOpen();
         MatchesFamilyHelper();
 
         if (_failed != 0)
@@ -167,6 +168,28 @@ internal static class OpenInCatalogTests
                 Families = (int)OpenAppFamily.Editor
             };
             Expect(OpenInCatalog.Launch(app, path), "launch by exe path");
+        }
+        finally
+        {
+            try { File.Delete(path); } catch { }
+        }
+    }
+
+    private static void AssocLaunchUsesShellOpen()
+    {
+        // assoc must not require a resolvable ExePath — shell opens the document.
+        string path = Path.Combine(Path.GetTempPath(), "qb-assoc-" + Guid.NewGuid().ToString("N") + ".txt");
+        File.WriteAllText(path, "assoc");
+        try
+        {
+            OpenInApp assoc = new OpenInApp
+            {
+                Id = "assoc",
+                Title = "Default",
+                ExePath = null,
+                Families = (int)OpenAppFamily.Editor
+            };
+            Expect(OpenInCatalog.Launch(assoc, path), "assoc shell open without exe");
         }
         finally
         {
