@@ -86,14 +86,8 @@ internal static class AppIdResolver
             return id;
         }
 
-        id = TryFromStartMenuShortcut(full);
-        if (!string.IsNullOrEmpty(id))
-        {
-            CacheByExePath[full] = id;
-            return id;
-        }
-
-        // Unpackaged apps often use the exe path as their implicit AppUserModelID.
+        // Do not scan Start Menu on this hot path (UI notify / Open with). Curated map
+        // covers everyday apps; unpackaged apps commonly use the exe path as AppID.
         id = full;
         CacheByExePath[full] = id;
         return id;
