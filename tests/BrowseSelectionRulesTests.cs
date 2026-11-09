@@ -65,7 +65,7 @@ internal static class BrowseSelectionRulesTests
         Expect(c.Count == 1 && c.AllFiles && !c.AllDirectories, "file flags");
         Expect(c.CanCutCopyDelete, "file cut/copy/delete");
         Expect(c.CanRename, "file rename");
-        Expect(c.CanOpen && c.CanOpenWith && c.CanOpenIn, "file open verbs");
+        Expect(c.CanOpen && c.CanOpenWith && c.CanOpenIn, "file open with verbs");
         Expect(c.CanHash, "file hash");
         Expect(c.CanDuplicate && c.CanShortcut && c.CanSendTo && c.CanCompress, "file batch verbs");
         Expect(c.CanProperties && c.CanExplorer && c.CanCopyPath, "file props/explorer/copy path");
@@ -80,8 +80,8 @@ internal static class BrowseSelectionRulesTests
         Expect(c.AllDirectories && !c.AllFiles, "folder flags");
         Expect(c.CanCutCopyDelete && c.CanRename, "folder edit");
         Expect(c.CanPin && c.CanTerminal, "folder pin/terminal");
-        Expect(c.CanOpen && c.CanOpenIn && c.CanProperties, "folder open/in/props");
-        Expect(!c.CanOpenWith && !c.CanHash && !c.CanRunAsAdmin && !c.CanExtract, "folder no file-only verbs");
+        Expect(c.CanOpen && c.CanOpenWith && c.CanOpenIn && c.CanProperties, "folder open/with/props");
+        Expect(!c.CanHash && !c.CanRunAsAdmin && !c.CanExtract, "folder no file-only verbs");
         Expect(c.CanCompress && c.CanSendTo && c.CanDuplicate && c.CanShortcut, "folder batch verbs");
     }
 
@@ -137,7 +137,7 @@ internal static class BrowseSelectionRulesTests
         Expect(c.AnyDrive, "drive flag");
         Expect(!c.AllDirectories, "drive is not a normal folder");
         Expect(!c.CanCutCopyDelete && !c.CanRename && !c.CanDuplicate && !c.CanShortcut, "drive no edit verbs");
-        Expect(!c.CanSendTo && !c.CanCompress && !c.CanPin && !c.CanTerminal && !c.CanOpenIn, "drive no folder extras");
+        Expect(!c.CanSendTo && !c.CanCompress && !c.CanPin && !c.CanTerminal && !c.CanOpenWith && !c.CanOpenIn, "drive no folder extras");
         Expect(c.CanOpen && c.CanProperties && c.CanExplorer, "drive open/props/explorer");
 
         BrowseMenuCapabilities mix = BrowseSelectionRules.Compute(List(File(@"C:\a.txt"), Drive(@"D:\")));

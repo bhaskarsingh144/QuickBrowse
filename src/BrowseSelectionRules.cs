@@ -105,8 +105,9 @@ internal static class BrowseSelectionRules
         c.CanRename = single && canEdit;
         c.CanOpen = allPath;
         c.CanCopyPath = allPath;
-        c.CanOpenWith = singleFile;
-        c.CanOpenIn = single && canEdit;
+        // Unified Open with: files and folders (editors); not drives / multi-select.
+        c.CanOpenWith = single && canEdit;
+        c.CanOpenIn = c.CanOpenWith;
         c.CanPin = singleDir;
         c.CanTerminal = singleDir;
         c.CanCompress = canEdit && !singleArchive;
